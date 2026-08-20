@@ -791,40 +791,51 @@ window.LocationMod = (function() {
       </div>
     `;
     // 异步渲染地图（marker + 路径连线）
-    renderDistMap(originLoc, destLoc, from, to, mode);
+    renderDistMap(originLoc, destLoc, from, to, mode).catch(() => {
+      const box = document.getElementById('distMap');
+      if (box) box.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 地图渲染失败，请检查高德JS Key配置。</div>';
+    });
   }
 
   // ===== 距离测算·交互式地图与路径连线 =====
   async function renderDistMap(originLoc, destLoc, fromName, toName, mode) {
+    const jsKey = (localStorage.getItem('k_amap_js')||'').trim();
+    const srvKey = getAmapKey().srv;
+    const [olng, olat] = originLoc.split(',').map(Number);
+    const [dlng, dlat] = destLoc.split(',').map(Number);
+
+    // 无 JS Key：降级用静态图展示连线
+    if (!jsKey) {
+      const box = document.getElementById('distMap');
+      if (!box) return;
+      if (srvKey) {
+        const cLng = ((olng+dlng)/2).toFixed(6), cLat = ((olat+dlat)/2).toFixed(6);
+        const markers = [
+          `-1,0xF5222D,${encodeURIComponent(fromName)}`, originLoc,
+          `-1,0x1677FF,${encodeURIComponent(toName)}`, destLoc
+        ].join('|');
+        const pathStr = `${originLoc},${destLoc}`;
+        const url = `https://restapi.amap.com/v3/staticmap?key=${encodeURIComponent(srvKey)}&location=${cLng},${cLat}&zoom=12&size=900*420&scale=2&markers=${encodeURIComponent(markers)}&paths=${encodeURIComponent(`2,0x1677FF,0.7,3,${pathStr}`)}`;
+        box.innerHTML = `<div style="position:absolute;inset:0;">
+          <img src="${url}" alt="路径地图" style="width:100%;height:100%;object-fit:cover;display:block;"
+               onerror="this.parentElement.innerHTML='<div style=\\'padding:24px;color:var(--text-3);font-size:12.5px;\\'>📌 静态地图加载失败，请检查高德Key配置。</div>'">
+          <div style="position:absolute;left:10px;bottom:8px;background:rgba(255,255,255,.85);padding:4px 8px;border-radius:6px;font-size:11.5px;">🔲 静态地图（配置 JS Key 可使用交互地图）</div>
+        </div>`;
+      } else {
+        box.innerHTML = `<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 建议在【系统设置】中配置高德 Web端 JS Key，即可显示交互地图与真实路径连线。<br/><button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="App.navigate('settings')">去配置 Key</button></div>`;
+      }
+      return;
+    }
+
+    // 有 JS Key：加载高德 JS SDK 并渲染交互地图
     let AMap = null;
     try { AMap = await loadAmapSDK(); } catch(e) {
-      // 无 JS Key：降级用静态图展示连线（Web服务 Key）
-      const srvKey = getAmapKey().srv;
-      if (srvKey) {
-        const box = document.getElementById('distMap');
-        if (!box) return;
-        const [olng, olat] = originLoc.split(',').map(Number);
-        const [dlng, dlat] = destLoc.split(',').map(Number);
-        const cLng = ((olng+dlng)/2).toFixed(5), cLat = ((olat+dlat)/2).toFixed(5);
-        const markers = [
-          `-1,0xF5222D,S:${encodeURIComponent(fromName)}`, originLoc,
-          `-1,0x1677FF,E:${encodeURIComponent(toName)}`, destLoc
-        ].join('|');
-        // 用 markers+连线静态图
-        const pathStr = `${originLoc};${destLoc}`;
-        const url = `https://restapi.amap.com/v3/staticmap?key=${encodeURIComponent(srvKey)}&location=${cLng},${cLat}&zoom=12&size=900*420&scale=2&markers=${encodeURIComponent(markers)}&paths=${encodeURIComponent(`3,0x1677FF,1,,${pathStr}`)}`;
-        box.innerHTML = `<div style="position:absolute;inset:0;"><img src="${url}" alt="路径地图" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.innerHTML='<div style=\\'padding:24px;color:var(--text-3)\\'>📌 未配置高德JS Key，无法绘制交互地图；可在【系统设置】中配置 Web端 JS Key 获得完整功能。</div>'">
-          <div style="position:absolute;left:10px;bottom:8px;background:rgba(255,255,255,.85);padding:4px 8px;border-radius:6px;font-size:11.5px;">🔲 静态地图（建议配置 JS Key 使用交互地图）</div></div>`;
-      } else {
-        const box = document.getElementById('distMap');
-        if (box) box.innerHTML = `<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 建议在【系统设置】中配置高德 Web端 JS Key，即可显示交互地图与真实路径连线。<br/><button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="App.navigate('settings')">去配置 Key</button></div>`;
-      }
+      const box = document.getElementById('distMap');
+      if (box) box.innerHTML = `<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 高德SDK加载失败：${e.message||e}<br/><button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="App.navigate('settings')">检查 Key 配置</button></div>`;
       return;
     }
     const box = document.getElementById('distMap');
     if (!box) return;
-    const [olng, olat] = originLoc.split(',').map(Number);
-    const [dlng, dlat] = destLoc.split(',').map(Number);
     const map = new AMap.Map('distMap', {
       zoom: 12,
       center: [(olng+dlng)/2, (olat+dlat)/2],
@@ -833,49 +844,70 @@ window.LocationMod = (function() {
     });
 
     // 起点/终点自定义 Marker
-    const originMarker = new AMap.Marker({
-      position: [olng, olat],
-      content: `<div style="background:#F5222D;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(245,34,45,.35);white-space:nowrap;border:2px solid #fff;">🏁 ${fromName}</div>`,
-      offset: new AMap.Pixel(-40, -14), anchor: 'center'
-    });
-    const destMarker = new AMap.Marker({
-      position: [dlng, dlat],
-      content: `<div style="background:#1677FF;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(22,119,255,.35);white-space:nowrap;border:2px solid #fff;">🎯 ${toName}</div>`,
-      offset: new AMap.Pixel(-40, -14), anchor: 'center'
-    });
-    map.add([originMarker, destMarker]);
+    map.add([
+      new AMap.Marker({
+        position: [olng, olat],
+        content: `<div style="background:#F5222D;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(245,34,45,.35);white-space:nowrap;border:2px solid #fff;">🏁 ${fromName}</div>`,
+        offset: new AMap.Pixel(-40, -14), anchor: 'center'
+      }),
+      new AMap.Marker({
+        position: [dlng, dlat],
+        content: `<div style="background:#1677FF;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(22,119,255,.35);white-space:nowrap;border:2px solid #fff;">🎯 ${toName}</div>`,
+        offset: new AMap.Pixel(-40, -14), anchor: 'center'
+      })
+    ]);
 
-    // JS SDK 内的路径规划：在地图上绘制真实路径连线（走 steps）
-    const routeOpts = { map: map, hideMarkers: true, autoFitView: true,
-      policy: mode==='driving' ? AMap.DrivingPolicy.LEAST_TIME
-            : mode==='transit' ? AMap.TransferPolicy.LEAST_TIME
-            : undefined };
-    function done() {
-      try { if (AMap.Scale) map.addControl(new AMap.Scale()); } catch(e) {}
-      try { if (AMap.ToolBar) map.addControl(new AMap.ToolBar({position:'RB', locate:false})); } catch(e) {}
-    }
-    try {
-      if (mode === 'driving') {
-        new AMap.Driving(routeOpts).search(originLoc, destLoc, (s, r) => { if (s === 'complete' && r.routes && r.routes.length) map.setFitView(); done(); });
-      } else if (mode === 'walking') {
-        new AMap.Walking(routeOpts).search(originLoc, destLoc, (s, r) => { if (s === 'complete' && r.routes && r.routes.length) map.setFitView(); done(); });
-      } else if (mode === 'bicycling') {
-        new AMap.Bicycling(routeOpts).search(originLoc, destLoc, (s, r) => { if (s === 'complete' && r.routes && r.routes.length) map.setFitView(); done(); });
-      } else if (mode === 'transit') {
-        // 公交/地铁：Transfer 需要 city 参数，这里默认'南京'
-        const tr = new AMap.Transfer({ map, city: '南京', hideMarkers: true, autoFitView: true });
-        tr.search(originLoc, destLoc, (s) => { try { map.setFitView(); } catch(e) {} done(); });
-      } else { done(); }
-    } catch(err) {
-      // 失败降级：画一条直线
+    // 超时保护：8秒后如果路径还没画出来，至少画一条直线并自动适配视野
+    let routeDrawn = false;
+    const timeout = setTimeout(() => {
+      if (routeDrawn) return;
+      routeDrawn = true;
       try {
         map.add(new AMap.Polyline({
           path: [[olng,olat],[dlng,dlat]],
-          strokeColor:'#1677FF', strokeWeight:5, strokeOpacity:0.85, lineJoin:'round', showDir:true
+          strokeColor: '#1677FF', strokeWeight: 4, strokeOpacity: 0.7,
+          lineJoin: 'round', showDir: true, strokeDashArray: [8, 6]
         }));
         map.setFitView();
       } catch(e) {}
-      done();
+      try { if (AMap.Scale) map.addControl(new AMap.Scale()); } catch(e) {}
+      try { if (AMap.ToolBar) map.addControl(new AMap.ToolBar({position:'RB', locate:false})); } catch(e) {}
+    }, 8000);
+
+    function onRouteDone() {
+      if (routeDrawn) return;
+      routeDrawn = true;
+      clearTimeout(timeout);
+      try { map.setFitView(); } catch(e) {}
+      try { if (AMap.Scale) map.addControl(new AMap.Scale()); } catch(e) {}
+      try { if (AMap.ToolBar) map.addControl(new AMap.ToolBar({position:'RB', locate:false})); } catch(e) {}
+    }
+
+    try {
+      if (mode === 'driving') {
+        new AMap.Driving({ map, hideMarkers: true, autoFitView: true })
+          .search(originLoc, destLoc, (s) => { if (s === 'complete') onRouteDone(); else onRouteDone(); });
+      } else if (mode === 'walking') {
+        new AMap.Walking({ map, hideMarkers: true, autoFitView: true })
+          .search(originLoc, destLoc, () => onRouteDone());
+      } else if (mode === 'bicycling') {
+        new AMap.Bicycling({ map, hideMarkers: true, autoFitView: true })
+          .search(originLoc, destLoc, () => onRouteDone());
+      } else if (mode === 'transit') {
+        new AMap.Transfer({ map, city: '南京', hideMarkers: true, autoFitView: true })
+          .search(originLoc, destLoc, () => onRouteDone());
+      } else { onRouteDone(); }
+    } catch(err) {
+      // 失败降级：画一条虚线
+      try {
+        map.add(new AMap.Polyline({
+          path: [[olng,olat],[dlng,dlat]],
+          strokeColor: '#1677FF', strokeWeight: 4, strokeOpacity: 0.7,
+          lineJoin: 'round', showDir: true, strokeDashArray: [8, 6]
+        }));
+        map.setFitView();
+      } catch(e) {}
+      onRouteDone();
     }
   }
 
