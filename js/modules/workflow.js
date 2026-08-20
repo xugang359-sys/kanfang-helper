@@ -21,12 +21,7 @@ window.WorkflowMod = (function() {
       <div class="page-header">
         <div>
           <h2><span class="emoji">🚀</span>购房进度追踪</h2>
-          <p class="page-desc">9步购房流程进度追踪 + 全量数据导出备份</p>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-ghost btn-sm" onclick="WorkflowMod.exportJSON()">📦 导出JSON备份</button>
-          <button class="btn btn-accent btn-sm" onclick="WorkflowMod.exportExcel()">📊 导出Excel</button>
-          <button class="btn btn-primary btn-sm" onclick="WorkflowMod.exportPDF()">📄 打印为PDF</button>
+          <p class="page-desc">9步购房流程进度追踪 · 完成后可在「看房报告」生成总结报告</p>
         </div>
       </div>
 
@@ -67,26 +62,6 @@ window.WorkflowMod = (function() {
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-title">📤 数据导出</div>
-          <div style="display:grid;grid-template-columns:repeat(1,1fr);gap:10px;">
-            <div style="border:1px solid var(--border-light);border-radius:8px;padding:12px;">
-              <h4 style="font-size:13.5px;margin-bottom:4px;">📦 JSON 全量备份 <span class="tag tag-primary tag-sm">推荐</span></h4>
-              <p style="font-size:12px;color:var(--text-3);margin-bottom:8px;">导出所有数据（房源+期望+计划+流程+设置），可在"设置与备份"中导入恢复，防止数据丢失。</p>
-              <button class="btn btn-primary btn-sm" onclick="WorkflowMod.exportJSON()">立即导出</button>
-            </div>
-            <div style="border:1px solid var(--border-light);border-radius:8px;padding:12px;">
-              <h4 style="font-size:13.5px;margin-bottom:4px;">📊 Excel（CSV）房源记录表</h4>
-              <p style="font-size:12px;color:var(--text-3);margin-bottom:8px;">导出房源记录为CSV格式，可用Excel/Numbers/WPS打开做进一步分析（价格对比、筛选、透视等）。</p>
-              <button class="btn btn-accent btn-sm" onclick="WorkflowMod.exportExcel()">导出CSV</button>
-            </div>
-            <div style="border:1px solid var(--border-light);border-radius:8px;padding:12px;">
-              <h4 style="font-size:13.5px;margin-bottom:4px;">📄 PDF看房报告（可打印）</h4>
-              <p style="font-size:12px;color:var(--text-3);margin-bottom:8px;">生成可打印的HTML报告，打开后 Ctrl+P（Windows）或 Cmd+P（Mac）选择"另存为PDF"，方便分享给家人查看。</p>
-              <button class="btn btn-success btn-sm" onclick="WorkflowMod.exportPDF()">生成PDF报告</button>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div class="card">
@@ -246,5 +221,5 @@ window.WorkflowMod = (function() {
     Utils.toast('报告已生成，打开文件后按 Ctrl+P / Cmd+P 可打印为PDF','success');
   }
 
-  return { render, next, prev, jumpTo, reset, doReset, markAllDone, doAllDone, saveNote, exportJSON, exportExcel, exportPDF };
+  return { render, next, prev, jumpTo, reset, doReset, markAllDone, doAllDone, saveNote };
 })();

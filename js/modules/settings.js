@@ -104,27 +104,8 @@ window.SettingsMod = (function() {
         </div>
 
         <div class="card" style="grid-column:1/-1;">
-          <div class="card-title">ℹ️ 关于 & 使用指南</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;font-size:13px;color:var(--text-2);">
-            <div style="padding:10px;background:var(--primary-soft);border-radius:8px;">
-              <h4 style="font-size:13px;color:var(--primary);margin-bottom:4px;">📱 离线可用</h4>
-              M1-M4、M7(统计)、M8财务、M10检查清单、M11流程与导出等模块完全无需联网，数据全部保存在浏览器本地。
-            </div>
-            <div style="padding:10px;background:var(--success-soft);border-radius:8px;">
-              <h4 style="font-size:13px;color:var(--success);margin-bottom:4px;">🌐 联网模块</h4>
-              M5房源推荐（可手动粘贴链接）、M6 AI决策分析、M9地图配套等模块在有Key或联网状态下可获取更精确结果，离线时使用模拟数据。
-            </div>
-            <div style="padding:10px;background:var(--accent-soft);border-radius:8px;">
-              <h4 style="font-size:13px;color:var(--accent);margin-bottom:4px;">💾 数据安全</h4>
-              所有个人数据仅存在当前浏览器 localStorage 中，强烈建议定期使用上方"导出JSON备份"保存备份文件，防止浏览器数据丢失。
-            </div>
-            <div style="padding:10px;background:var(--warn-soft);border-radius:8px;">
-              <h4 style="font-size:13px;color:var(--warn);margin-bottom:4px;">📱 移动设备使用</h4>
-              在手机浏览器打开页面后可添加到桌面（iOS/Android均支持），使用体验等同于原生APP，适合看房现场实时记录。
-            </div>
-          </div>
-          <div style="margin-top:16px;text-align:center;font-size:12px;color:var(--text-3);">
-            🏡 <strong>南京看房助手</strong> · 版本 v1.0.0 · 2026年8月 · 基于 TRAE 全栈开发 · 核心模块 7个 · 拓展模块 4个 · 功能点 50+
+          <div style="text-align:center;font-size:13px;color:var(--text-3);padding:8px;">
+            🏡 <strong style="color:var(--text-2);">南京看房助手</strong> · 版本 v1.0.0 · 2026年8月
           </div>
         </div>
       </div>

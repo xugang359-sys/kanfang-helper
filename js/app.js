@@ -15,6 +15,7 @@ window.App = (function() {
     location:     {mod: 'LocationMod',   label: '🗺️ 区位分析工具'},
     aids:         {mod: 'AidsMod',       label: '🛠️ 实地检查清单'},
     workflow:     {mod: 'WorkflowMod',   label: '🚀 购房进度追踪'},
+    report:       {mod: 'ReportMod',    label: '📄 看房报告'},
     settings:     {mod: 'SettingsMod',   label: '⚙️ 系统设置'},
     more:         {mod: 'SettingsMod',   label: '☰ 更多'},
   };

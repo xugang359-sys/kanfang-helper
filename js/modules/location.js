@@ -445,7 +445,6 @@ window.LocationMod = (function() {
         </div>
       </div>
       <div style="margin-top:14px;"><span class="tag ${color}" style="padding:4px 10px;font-size:12px;">💡 ${advice}</span></div>
-      <div style="margin-top:8px;font-size:11.5px;color:var(--text-3);">${dataSource}</div>
     `;
   }
 
@@ -493,7 +492,6 @@ window.LocationMod = (function() {
         </div>
       </div>
       <div style="margin-top:14px;"><span class="tag ${color}" style="padding:4px 10px;font-size:12px;">💡 ${advice}</span></div>
-      <div style="margin-top:8px;font-size:11.5px;color:var(--text-3);">📊 数据来源：本地模拟（基于南京各板块平均通勤时长） · 如需真实路径请配置高德API Key</div>
     `;
   }
   function applyMapKey() { App.navigate('settings'); }
@@ -744,7 +742,7 @@ window.LocationMod = (function() {
            <div style="position:relative;z-index:1;text-align:center;">
              <div style="font-size:28px;">🏠</div>
              <strong>${comm}</strong><br/>
-             <small>📍 接入高德 JS Key 后显示真实交互式地图</small>
+             <small>📍 配置高德 Key 后显示交互式地图</small>
            </div>
          </div>`;
 
@@ -757,7 +755,6 @@ window.LocationMod = (function() {
           </div>
         </div>
         ${mapPlaceholder}
-        <div style="margin-top:10px;font-size:11.5px;color:var(--text-3);">${dataSource}</div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px;">
           ${data.map(f=>`<div style="padding:8px 10px;background:#fff;border:1px solid var(--border-light);border-radius:6px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -818,16 +815,6 @@ window.LocationMod = (function() {
               ${records.slice(0,6).map(r=>`<span class="tag tag-sm" style="cursor:pointer;background:var(--primary-soft);color:var(--primary);" onclick="document.getElementById('d_from').value='${r.communityName}';">${r.communityName}</span>`).join('')}
             </div>
           </div>` : ''}
-        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
-          <span style="font-size:11.5px;color:var(--text-3);">常用目标快捷：</span>
-          ${[
-            {n:'🛍️ 商场', t:'060100'},
-            {n:'🏥 医院', t:'090100'},
-            {n:'🎓 学校', t:'141200'},
-            {n:'🚇 地铁站', t:'150500'},
-            {n:'🌳 公园', t:'110101'},
-          ].map(x=>`<span class="tag tag-sm" style="cursor:pointer;" onclick="document.getElementById('d_to').dataset.poiType='${x.t}';document.getElementById('d_to').focus();">${x.n}</span>`).join('')}
-        </div>
         <div id="d_result" style="margin-top:14px;">
           <div class="empty-state" style="padding:24px;"><div class="icon">📏</div>
             <h4>输入起点和终点开始测算</h4>
@@ -944,14 +931,25 @@ window.LocationMod = (function() {
         <div id="distMapLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;pointer-events:none;">🗺️ 正在加载路径地图…</div>
       </div>
     `;
-    // 异步渲染地图（marker + 路径连线），10秒超时兜底
+    // 异步渲染地图（marker + 路径连线），8秒超时兜底
     let mapTimer = setTimeout(() => {
       const loadingEl = document.getElementById('distMapLoading');
       const mapBox = document.getElementById('distMap');
       if (loadingEl && loadingEl.parentElement === mapBox) {
-        mapBox.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;">⏱️ 地图加载超时，可能是高德JS Key未配置或网络受限。<br/>请到【系统设置】检查高德Key配置，或尝试使用静态地图模式。</div>';
+        // 超时后尝试静态图降级
+        const srvKey = getAmapKey().srv;
+        if (srvKey) {
+          const markers = `-1,0xF5222D,${encodeURIComponent(from)},${originLoc}|-1,0x1677FF,${encodeURIComponent(to)},${destLoc}`;
+          const pathStr = `${originLoc},${destLoc}`;
+          const cLng = ((Number(originLoc.split(',')[0])+Number(destLoc.split(',')[0]))/2).toFixed(6);
+          const cLat = ((Number(originLoc.split(',')[1])+Number(destLoc.split(',')[1]))/2).toFixed(6);
+          const sUrl = `https://restapi.amap.com/v3/staticmap?key=${encodeURIComponent(srvKey)}&location=${cLng},${cLat}&zoom=12&size=900*420&scale=2&markers=${encodeURIComponent(markers)}&paths=${encodeURIComponent(`2,0x1677FF,0.7,3,${pathStr}`)}`;
+          mapBox.innerHTML = `<img src="${sUrl}" alt="路径地图" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.innerHTML='<div style=\\'padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;\\'>⏱️ 地图加载超时，请检查网络或高德Key配置。</div>'">`;
+        } else {
+          mapBox.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;">⏱️ 地图加载超时，请到【系统设置】检查高德Key配置。</div>';
+        }
       }
-    }, 10000);
+    }, 8000);
     renderDistMap(originLoc, destLoc, from, to, mode).then(() => {
       clearTimeout(mapTimer);
       const loadingEl = document.getElementById('distMapLoading');
