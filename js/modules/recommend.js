@@ -123,15 +123,21 @@ window.RecommendMod = (function() {
   function render() {
     ensureSeed();
     Store.updatePlanStatus();
+    // 未接入真实数据源时，不做本地模拟，提示配置（支持手动导入真实房源）
+    if (!Utils.apiConfigured('beike')) {
+      App.setContent(Utils.apiGate('beike', {
+        manual: `<button class="btn btn-ghost btn-sm" onclick="RecommendMod.startManualImport()">📋 粘贴链接手动导入</button>`
+      }));
+      return;
+    }
     const exp = Store.getExpectation();
     const html = `
       <div class="page-header">
         <div>
           <h2><span class="emoji">🔍</span>房源推荐与推送</h2>
-          <p class="page-desc">按区域+期望档案自动匹配房源。当前模拟 ${SEED_HOUSES.length} 套南京各板块真实风格房源数据。</p>
+          <p class="page-desc">按区域+期望档案自动匹配房源。真实数据来自贝壳开放平台（联网获取）或手动导入。</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-accent btn-sm" onclick="RecommendMod.refreshPush()">📡 模拟月度刷新</button>
           <button class="btn btn-primary btn-sm" onclick="RecommendMod.requestOnline()">🌐 尝试联网获取最新</button>
         </div>
       </div>
@@ -631,24 +637,6 @@ window.RecommendMod = (function() {
     }, 150);
   }
 
-  function refreshPush() {
-    Utils.toast('📡 正在调用方案A：刷新房源数据...','info');
-    setTimeout(()=>{
-      // 模拟抓取：在原数据基础上小幅调整价格
-      const adjusted = SEED_HOUSES.map(h => {
-        const delta = (Math.random() - 0.5) * 0.04; // ±2%
-        const newPrice = Math.round(h.totalPrice * (1 + delta));
-        return { ...h, totalPrice: newPrice, unitPrice: Math.round(newPrice * 10000 / h.area) };
-      });
-      localStorage.setItem('hh_rec_seed', JSON.stringify(adjusted));
-      localStorage.setItem('hh_rec_last_refresh', Utils.today() + ' ' + new Date().toTimeString().slice(0,5));
-      Utils.notify('🔔 房源数据已刷新', `本周共更新 ${adjusted.length} 套房源价格，请打开推荐模块查看。`);
-      Utils.toast('已模拟方案A抓取，价格小幅波动更新','success');
-      // 刷新列表
-      render();
-    }, 1200);
-  }
-
   async function requestOnline() {
     // 优先尝试贝壳开放平台 API
     if (typeof BeikeMod !== 'undefined' && BeikeMod.isConfigured()) {
@@ -659,22 +647,21 @@ window.RecommendMod = (function() {
       body: `<div style="font-size:13px;line-height:1.9;">
         <p><strong>数据源方案说明：</strong></p>
         <div style="padding:10px;background:var(--primary-soft);border-radius:6px;margin:8px 0;">
-          <p>📌 <strong>方案A（推荐 · 已启用）：</strong>使用 TRAE 定时任务，每周一09:00自动抓取南京各板块房源数据（贝壳/链家公开信息）。抓取结果会同步到本模块。</p>
+          <p>📌 <strong>方案A（推荐）：</strong>配置贝壳开放平台 API（需企业认证账号），自动拉取真实成交案例与估值数据。</p>
           <p>📌 <strong>方案B：</strong>引导用户在房产平台复制房源链接，粘贴到本工具，自动解析价格/户型/地址等字段。</p>
-          <p>📌 <strong>方案C：</strong>对接贝壳开放平台等API（需开发者资质）。</p>
+          <p>📌 <strong>方案C：</strong>由定时抓取任务（每周一）采集公开房源数据后写入本模块。</p>
         </div>
-        <div style="padding:10px;background:var(--success-soft);border-radius:6px;margin:8px 0;">
-          <p>✅ <strong>方案A已配置：</strong>定时任务 <code>每周一 09:00</code> 自动执行。<br>
-          📅 最近一次更新：${localStorage.getItem('hh_rec_last_refresh') || '尚未执行过'}<br>
-          📦 本地缓存：<strong>${SEED_HOUSES.length}</strong> 套房源（含通用占位图）</p>
+        <div style="padding:10px;background:var(--warn-soft);border-radius:6px;margin:8px 0;">
+          <p>⚠️ <strong>当前未检测到贝壳 API 配置</strong>，无法获取真实数据。<br>
+          📅 最近一次数据更新：${localStorage.getItem('hh_rec_last_refresh') || '尚未执行过'}<br>
+          📦 本地缓存：<strong>${SEED_HOUSES.length}</strong> 套房源（占位数据，不保证真实性）</p>
         </div>
-        <p>当前本地已内置 <strong>${SEED_HOUSES.length}</strong> 套南京真实风格房源数据可直接体验全部功能。点击下方按钮可立即触发一次"模拟刷新"（更新缓存的图片+随机调整价格），实际抓取任务会在每周一执行。</p>
-        <p style="color:var(--text-3);font-size:12px;">（注：真实爬虫抓取涉及平台合规与反爬策略，定时任务执行时若遇到反爬验证码会自动跳过该批次。）</p>
+        <p>请选择以下任一方式接入真实数据源：</p>
       </div>`,
       size:'lg',
       footer:`<button class="btn btn-ghost" onclick="Utils.closeModal()">关闭</button>
-        <button class="btn btn-accent" onclick="Utils.closeModal();RecommendMod.refreshPush()">🔄 立即模拟刷新</button>
-        <button class="btn btn-primary" onclick="Utils.closeModal();RecommendMod.startManualImport()">📋 粘贴链接手动导入</button>`
+        <button class="btn btn-primary" onclick="Utils.closeModal();App.navigate('settings')">⚙️ 去配置贝壳API</button>
+        <button class="btn btn-accent" onclick="Utils.closeModal();RecommendMod.startManualImport()">📋 粘贴链接手动导入</button>`
     });
   }
 
@@ -761,5 +748,5 @@ window.RecommendMod = (function() {
     Utils.toast('已创建，建议补充完整字段','success');
   }
 
-  return { render, doFilter, resetFilter, renderList, toggleFav, toRecord, toPlan, refreshPush, requestOnline, startManualImport, doManualImport, viewDetail, toggleAdvFilter, resetAdvFilter };
+  return { render, doFilter, resetFilter, renderList, toggleFav, toRecord, toPlan, requestOnline, startManualImport, doManualImport, viewDetail, toggleAdvFilter, resetAdvFilter };
 })();

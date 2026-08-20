@@ -7,10 +7,36 @@
      - 壳e估 assessEstimate（房屋估值）
    ============================================ */
 window.BeikeMod = (function() {
-  const BASE = 'https://gw-open.ke.com';
-  const TOKEN_URL = BASE + '/oauth/token';
-  const DEAL_CASE_URL = BASE + '/api/assessTransactionCase';
-  const ESTIMATE_URL = BASE + '/api/assessEstimate';
+  const DIRECT_BASE = 'https://gw-open.ke.com';
+  // 每个接口提供两个地址：优先本地 server.js 代理（同源无 CORS），失败时回退直连
+  const ENDPOINTS = {
+    token:    ['/api/beike/oauth/token',            DIRECT_BASE + '/oauth/token'],
+    dealCase: ['/api/beike/assessTransactionCase', DIRECT_BASE + '/api/assessTransactionCase'],
+    estimate: ['/api/beike/assessEstimate',        DIRECT_BASE + '/api/assessEstimate'],
+  };
+
+  // 统一 POST 封装：依次尝试代理地址 → 直连地址
+  async function _post(paths, { headers = {}, body }) {
+    let lastErr = '';
+    for (const p of paths) {
+      try {
+        const res = await fetch(p, { method: 'POST', headers, body });
+        if (res.ok) return await res.json();
+        // 非 2xx：若响应体是贝壳业务 JSON（含 code/msg/data），返回给上层判断，而非误判为网络失败
+        const text = await res.text().catch(() => '');
+        if (text) {
+          try {
+            const j = JSON.parse(text);
+            if (j && (j.code !== undefined || j.msg || j.data)) return j;
+          } catch (_e) { /* 非 JSON 响应，忽略 */ }
+        }
+        lastErr = 'HTTP ' + res.status;
+      } catch (e) { lastErr = e.message || String(e); }
+    }
+    const err = new Error(lastErr);
+    err.cors = /fetch|Failed/i.test(lastErr);
+    throw err;
+  }
 
   // 读取本地配置
   function getConfig() {
@@ -39,12 +65,10 @@ window.BeikeMod = (function() {
       return { ok:false, err:'未配置贝壳 AppKey/AppSecret' };
     }
     try {
-      const res = await fetch(TOKEN_URL, {
-        method: 'POST',
+      const data = await _post(ENDPOINTS.token, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `grant_type=client_credentials&app_id=${encodeURIComponent(c.appKey)}&app_secret=${encodeURIComponent(c.appSecret)}`
+        body: `grant_type=client_credentials&client_id=${encodeURIComponent(c.appKey)}&client_secret=${encodeURIComponent(c.appSecret)}`
       });
-      const data = await res.json();
       if (data.code === 0 && data.data && data.data.access_token) {
         const token = data.data.access_token;
         const exp = Date.now() + (Number(data.data.expires_in) || 7200) * 1000;
@@ -52,9 +76,9 @@ window.BeikeMod = (function() {
         localStorage.setItem('k_beike_token_exp', String(exp));
         return { ok:true, token };
       }
-      return { ok:false, err: data.msg || data.message || JSON.stringify(data).slice(0,200) };
+      return { ok:false, err: data.data?.error || data.data?.message || data.msg || data.message || JSON.stringify(data).slice(0,200) };
     } catch(e) {
-      return { ok:false, err:'网络错误：'+(e.message||e)+'（可能是CORS，建议通过server.js代理）' };
+      return { ok:false, err:'网络错误：'+(e.message||e)+(e.cors?'（跨域被拦截，请使用 node server.js 启动以启用本地代理）':'') };
     }
   }
 
@@ -65,37 +89,35 @@ window.BeikeMod = (function() {
   }
 
   // 调用业务接口（统一鉴权头 + 错误处理）
-  async function callAPI(url, params) {
+  async function callAPI(ep, params) {
     const t = await ensureToken();
     if (!t.ok) return t;
+    const paths = ENDPOINTS[ep];
+    if (!paths) return { ok:false, err:'未知接口：'+ep };
     try {
       const body = Object.entries(params).map(([k,v]) =>
         `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'access_token': t.token
-        },
+      const data = await _post(paths, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'access_token': t.token },
         body
       });
-      const data = await res.json();
+      // 兼容 code / errno 两种返回结构
+      const bizCode = data.code !== undefined ? data.code : (data.errno !== undefined ? data.errno : 0);
+      const bizMsg = data.msg || data.errmsg || data.message;
       // token 失效 → 自动刷新一次重试
-      if (data.code === -2000 || /token/i.test(data.msg||'')) {
+      if (bizCode === -2000 || /token/i.test(bizMsg||'')) {
         localStorage.removeItem('k_beike_token');
         localStorage.removeItem('k_beike_token_exp');
         const t2 = await fetchToken();
         if (!t2.ok) return t2;
-        const res2 = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'access_token': t2.token
-          },
+        const data2 = await _post(paths, {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'access_token': t2.token },
           body
         });
-        return { ok:true, data: await res2.json() };
+        return { ok:true, data: data2 };
       }
+      // 业务错误码（如配额不足 -2001）不得当作成功返回
+      if (bizCode !== 0) return { ok:false, err: bizMsg || ('接口错误 code=' + bizCode) };
       return { ok:true, data };
     } catch(e) {
       return { ok:false, err:'网络错误：'+(e.message||e) };
@@ -106,7 +128,7 @@ window.BeikeMod = (function() {
   // 参数：city, address, buildArea, timePeriod=LAST_THREE_MONTH
   async function dealCases({ city='南京', address, buildArea, timePeriod='LAST_THREE_MONTH' }) {
     if (!address) return { ok:false, err:'缺少 address' };
-    const r = await callAPI(DEAL_CASE_URL, {
+    const r = await callAPI('dealCase', {
       standCity: city,
       standDetailedAddress: address,
       standPriceAssessBuildArea: String(buildArea || 100),
@@ -133,7 +155,7 @@ window.BeikeMod = (function() {
   // 壳e估：输入地址+面积 → 返回估值
   async function estimate({ city='南京', address, buildArea }) {
     if (!address) return { ok:false, err:'缺少 address' };
-    const r = await callAPI(ESTIMATE_URL, {
+    const r = await callAPI('estimate', {
       standCity: city,
       standDetailedAddress: address,
       standPriceAssessBuildArea: String(buildArea || 100)

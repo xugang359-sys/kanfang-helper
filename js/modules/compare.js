@@ -402,25 +402,7 @@ ${prepared.map(h=>`### 房源${h.idx}：${h.name}（${h.district}）
   }
 
   function renderAIResult(data, aiResult) {
-    const districts = [...new Set(data.map(d=>d.r.district).filter(Boolean))];
     const box = document.getElementById('aiDeepBox');
-
-    // AI调用失败时的回退本地分析
-    const fallbackAnalysis = districts.map(dist => {
-      const templates = {
-        '江宁': `百家湖/九龙湖板块商业成熟，地铁1/3/5/S1号线覆盖，产业园区聚集，教育资源持续升级。未来5号线南段通车+南站辐射利好。`,
-        '浦口': `江北新区国家级政策红利，扬子江隧道+地铁4/10/S8，核心区发展潜力大但配套尚需完善，短期3-5年内兑现。`,
-        '栖霞': `仙林大学城人文环境佳，地铁2/4号线，紫东新区规划利好；尧化门/燕子矶价格洼地，燕子矶新城改造推进中。`,
-        '雨花台': `铁心桥软件谷产业加持，高收入人群聚集，地铁1/S3号线，河西辐射圈层。房价相对稳定抗跌。`,
-        '鼓楼': `核心老城区配套成熟名校资源集中（拉力琅芳），但房龄老密度高，改善可选滨江板块新盘。`,
-        '玄武': `核心区稀缺性高，教育配套顶级，新街口商圈。适合注重教育配套的购房者。`,
-        '建邺': `河西新城现代化界面，政务/金融/商务中心，2号线贯穿。改善首选，价格偏高。`,
-        '秦淮': `老城区配套成熟，大校场新城规划落地值得关注。`,
-      };
-      const text = templates[dist] || `${dist}区配套基本成熟，建议实地考察交通通达性、在建项目进度、近期二手房成交量趋势。`;
-      return `<div style="margin:8px 0;"><span class="tag tag-primary tag-sm">📍 ${dist}</span>
-        <p style="font-size:12.5px;color:var(--text-2);margin:4px 0 0 4px;">${text}</p></div>`;
-    }).join('');
 
     // 简易 Markdown 渲染（**粗体** / ## 标题 / - 列表）
     function renderMd(md) {
@@ -435,31 +417,32 @@ ${prepared.map(h=>`### 房源${h.idx}：${h.name}（${h.district}）
     }
 
     const aiSucceeded = aiResult && aiResult.ok && aiResult.content;
+    const aiConfigured = !!Utils.apiConfigured('ai');
 
     box.innerHTML = `
       <div style="margin-top:14px;padding:14px 16px;background:#fff;border:1px solid var(--border-light);border-left:4px solid var(--primary);border-radius:10px;">
         <h4 style="font-size:14px;color:var(--text-1);margin-bottom:8px;display:flex;align-items:center;gap:8px;">
           <span style="font-size:18px;">🤖</span>
-          <span>${aiSucceeded?'AI深度分析完成':'本地分析结果'}</span>
-          ${aiSucceeded?`<span class="tag tag-success tag-sm" style="margin-left:4px;">${aiResult.cfg.desc}</span>`:'<span class="tag tag-warn tag-sm" style="margin-left:4px;">本地</span>'}
+          <span>${aiSucceeded?'AI深度分析完成':'AI深度分析'}</span>
+          ${aiSucceeded?`<span class="tag tag-success tag-sm" style="margin-left:4px;">${aiResult.cfg.desc}</span>`:'<span class="tag tag-warn tag-sm" style="margin-left:4px;">未生成</span>'}
         </h4>
         <div style="font-size:12.5px;color:var(--text-3);margin-bottom:10px;">
           ${aiSucceeded
             ? `已通过 <strong style="color:var(--text-2)">${aiResult.cfg.model}</strong> 完成 ${data.length} 套房源的智能分析 · ${new Date().toLocaleTimeString('zh-CN')}`
-            : '已基于本地数据生成基础分析（如需AI增强请配置有效的AI Key）'}
+            : '尚未生成 AI 深度分析。'}
         </div>
-        ${!aiSucceeded && aiResult && aiResult.err ? `
-          <div style="background:var(--warn-soft);border-left:3px solid var(--warn);padding:8px 10px;border-radius:4px;font-size:12px;color:var(--text-2);margin-bottom:10px;">
-            ⚠️ AI调用失败：${aiResult.err}
-          </div>` : ''}
         ${aiSucceeded ? `
           <div style="background:var(--bg-2);padding:14px 16px;border-radius:8px;font-size:13px;line-height:1.75;color:var(--text-1);">
             ${renderMd(aiResult.content)}
           </div>
         ` : `
-          <div style="background:var(--bg-2);padding:12px 14px;border-radius:8px;">
-            <div style="font-weight:600;font-size:13px;color:var(--primary);margin-bottom:6px;">🌆 区域发展评估（本地）</div>
-            ${fallbackAnalysis}
+          <div style="background:${aiConfigured?'var(--warn-soft)':'var(--danger-soft)'};border-left:3px solid ${aiConfigured?'var(--warn)':'var(--danger)'};padding:12px 14px;border-radius:8px;font-size:12.5px;color:var(--text-2);">
+            ${aiConfigured
+              ? `<strong style="color:var(--warn);">⚠️ AI 调用失败：</strong>${(aiResult && aiResult.err) ? aiResult.err : '未知错误，请重试或更换 Key。'}`
+              : '<strong style="color:var(--danger);">未配置 AI 大模型 Key。</strong>本工具不会用本地模拟数据冒充 AI 分析，请先配置后再生成深度建议。'}
+          </div>
+          <div style="text-align:center;margin-top:12px;">
+            <button class="btn btn-primary btn-sm" onclick="App.navigate('settings')">⚙️ 前往配置 AI 大模型</button>
           </div>
         `}
       </div>
@@ -571,5 +554,5 @@ ${prepared.map(h=>`### 房源${h.idx}：${h.name}（${h.district}）
     Utils.toast('决策报告已下载，可用浏览器打开后按 Ctrl+P 打印为PDF', 'success');
   }
 
-  return { render, toggleSel, clearSel, generate, generateAI, renderAIResult, exportReport };
+  return { render, toggleSel, clearSel, generate, generateAI, renderAIResult, exportReport, parseAIKey };
 })();

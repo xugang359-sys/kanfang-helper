@@ -5,6 +5,7 @@
    如没有 Node.js，可用 启动.bat 里的 python 方案
    ============================================ */
 const http = require('http');
+const https = require('https');
 const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
@@ -12,6 +13,47 @@ const { exec } = require('child_process');
 
 const DEFAULT_PORT = 8765;
 const ROOT = __dirname;
+
+// 贝壳开放平台代理（解决浏览器直调第三方 API 的 CORS 拦截）
+const BEIKE_HOST = 'gw-open.ke.com';
+const BEIKE_PROXY_MAP = {
+  '/api/beike/oauth/token':            '/oauth/token',
+  '/api/beike/assessTransactionCase': '/api/assessTransactionCase',
+  '/api/beike/assessEstimate':        '/api/assessEstimate',
+};
+function proxyBeike(req, res, targetPath) {
+  const chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const body = Buffer.concat(chunks);
+    const headers = {
+      'Content-Type': req.headers['content-type'] || 'application/x-www-form-urlencoded',
+      'Content-Length': body.length,
+    };
+    if (req.headers['access_token']) headers['access_token'] = req.headers['access_token'];
+    const pReq = https.request({
+      hostname: BEIKE_HOST,
+      path: targetPath,
+      method: 'POST',
+      headers,
+    }, pRes => {
+      const data = [];
+      pRes.on('data', c => data.push(c));
+      pRes.on('end', () => {
+        res.writeHead(pRes.statusCode || 200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(Buffer.concat(data));
+      });
+    });
+    pReq.on('error', e => {
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, err: '贝壳代理转发失败：' + (e.message || e) }));
+    });
+    pReq.end(body);
+  });
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -44,6 +86,8 @@ function tryListen(port) {
   const server = http.createServer((req, res) => {
     try {
       let url = decodeURIComponent(req.url.split('?')[0]);
+      // 贝壳 API 代理（转发到 gw-open.ke.com，解决前端 CORS）
+      if (BEIKE_PROXY_MAP[url]) { proxyBeike(req, res, BEIKE_PROXY_MAP[url]); return; }
       if (url === '/' || url === '') url = '/index.html';
       const filePath = path.normalize(path.join(ROOT, url));
       if (!filePath.startsWith(ROOT)) { res.writeHead(403, {'Content-Type':'text/plain; charset=utf-8'}); res.end('403 Forbidden'); return; }

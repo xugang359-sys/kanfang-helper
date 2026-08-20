@@ -40,12 +40,9 @@ window.App = (function() {
     document.querySelectorAll('.nav-item, .nav-sub-item').forEach(el => {
       el.classList.toggle('active', el.dataset.view === view);
     });
-    // 子菜单触发器高亮（当子项被选中时）
+    // 子菜单触发器高亮（当看房助手子项被选中时）
     document.querySelectorAll('.nav-trigger').forEach(el => {
-      const parent = el.closest('.nav-dropdown');
-      if (!parent) return;
-      const hasActive = parent.querySelectorAll('.nav-sub-item.active').length > 0;
-      el.classList.toggle('active', hasActive);
+      el.classList.toggle('active', ['finance','location'].includes(view));
     });
     // 移动端Tabbar
     document.querySelectorAll('.mobile-tabbar .tab').forEach(el => {
@@ -84,29 +81,58 @@ window.App = (function() {
 
   function bindNav() {
     // 顶部门户导航（含子菜单项）
-    document.querySelectorAll('#navList .nav-item, #navList .nav-sub-item').forEach(el => {
+    document.querySelectorAll('#navList .nav-item, .nav-sub-item').forEach(el => {
       if (!el.dataset.view) return; // 跳过 trigger
       el.addEventListener('click', (e) => {
         e.preventDefault();
+        hideDD();
         navigate(el.dataset.view);
         if (window.innerWidth < 1100) {
           try { document.getElementById('navList').scrollTo({ left: el.offsetLeft - 40, behavior: 'smooth' }); } catch(_){}
         }
       });
     });
-    // 子菜单 hover/click 展开
-    document.querySelectorAll('#navList .nav-dropdown').forEach(dd => {
-      const trigger = dd.querySelector('.nav-trigger');
-      const submenu = dd.querySelector('.nav-submenu');
-      if (!trigger || !submenu) return;
-      let leaveTimer = null;
-      dd.addEventListener('mouseenter', () => { clearTimeout(leaveTimer); submenu.classList.add('show'); });
-      dd.addEventListener('mouseleave', () => { leaveTimer = setTimeout(()=>submenu.classList.remove('show'), 300); });
-      trigger.addEventListener('click', (e) => {
+    // 看房助手子菜单 · 独立于滚动容器，展开时由 JS 定位到触发项正下方
+    const ddTrigger = document.querySelector('.nav-trigger');
+    const ddPanel = document.getElementById('assistantDD');
+    const topbarInner = document.querySelector('.topbar-inner');
+    let leaveTimer = null;
+    function positionDD() {
+      if (!ddTrigger || !ddPanel || !topbarInner) return;
+      const tr = ddTrigger.getBoundingClientRect();
+      const ib = topbarInner.getBoundingClientRect();
+      const pw = ddPanel.offsetWidth || 200;
+      let left = tr.left - ib.left;
+      if (left + pw > ib.width - 16) left = Math.max(16, ib.width - pw - 16);
+      ddPanel.style.left = left + 'px';
+    }
+    function showDD() { positionDD(); if (ddPanel) ddPanel.classList.add('show'); }
+    function hideDD() { if (ddPanel) ddPanel.classList.remove('show'); }
+    if (ddTrigger) {
+      // 点击：触屏/无障碍切换
+      ddTrigger.addEventListener('click', (e) => {
         e.preventDefault();
-        submenu.classList.toggle('show');
+        ddPanel.classList.contains('show') ? hideDD() : showDD();
       });
-    });
+      // 鼠标滑过即自动展开（桌面端主交互）
+      ddTrigger.addEventListener('mouseenter', () => {
+        clearTimeout(leaveTimer);
+        showDD();
+      });
+      // 离开 trigger 后延迟收起，期间若移入面板则取消
+      ddTrigger.addEventListener('mouseleave', () => {
+        leaveTimer = setTimeout(hideDD, 180);
+      });
+    }
+    // 鼠标进入面板保持展开，离开面板后收起
+    if (ddPanel) {
+      ddPanel.addEventListener('mouseenter', () => clearTimeout(leaveTimer));
+      ddPanel.addEventListener('mouseleave', () => { leaveTimer = setTimeout(hideDD, 180); });
+    }
+    // 鼠标移出整个顶栏时收起（安全兜底）
+    const topbarEl = document.querySelector('.topbar');
+    if (topbarEl) topbarEl.addEventListener('mouseleave', () => { leaveTimer = setTimeout(hideDD, 120); });
+    window.addEventListener('resize', positionDD);
     // 移动端Tabbar
     document.querySelectorAll('#mobileTabbar .tab').forEach(el => {
       el.addEventListener('click', (e) => {

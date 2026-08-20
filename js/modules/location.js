@@ -136,9 +136,12 @@ window.LocationMod = (function() {
 
   function render() {
     const k = getAmapKey();
-    const keyStatus = k.srv
-      ? `<span class="tag tag-success tag-sm">✓ 高德API已接入</span>`
-      : `<span class="tag tag-warn tag-sm">未配置高德Key（模拟模式）</span>`;
+    // 未配置高德 Web 服务 Key 时，不做本地模拟，直接提示配置
+    if (!k.srv) {
+      App.setContent(Utils.apiGate('amap'));
+      return;
+    }
+    const keyStatus = `<span class="tag tag-success tag-sm">✓ 高德API已接入</span>`;
     const html = `
       <div class="page-header">
         <div>
@@ -402,25 +405,28 @@ window.LocationMod = (function() {
         if (subwayRes) subwayDist = ` · ${subwayRes.distance}km`;
         dataSource = '🌐 数据来源：高德地图路径规划API（实时）';
         if (drive == null && subway == null) {
-          Utils.toast('高德API未返回有效路径，已回退本地模拟','warn');
-          return _calcCommuteLocal(work, part, district, community, exp, limit);
+          _renderErr('c_result', '高德路径规划 API 未返回有效路径，请检查 Web 服务 Key 的有效性、配额与权限后重试。', true);
+          return;
         }
-        // 缺失项用本地估算补全
-        if (drive == null) drive = Math.round((subway||40) * 0.9);
-        if (subway == null) subway = Math.round(drive * 1.1);
+        // 缺失项如实标注"未获取"，不伪造数据
+        if (drive == null) driveDist = '（未获取）';
+        if (subway == null) subwayDist = '（未获取）';
       } else {
-        Utils.toast('地址解析失败，已回退本地模拟','warn');
-        return _calcCommuteLocal(work, part, district, community, exp, limit);
+        _renderErr('c_result', '地址解析失败：请确认小区名 / 工作地书写正确，且高德 Web 服务 Key 有效。', true);
+        return;
       }
     } else {
-      return _calcCommuteLocal(work, part, district, community, exp, limit);
+      _renderErr('c_result', '未配置高德 Web 服务 Key，无法进行真实通勤测算。', true);
+      return;
     }
 
-    const subwayOK = subway <= limit, driveOK = drive <= limit;
+    const subwayOK = subway != null && subway <= limit;
+    const driveOK = drive != null && drive <= limit;
     let partHtml = '';
     if (part) {
-      // 伴侣简化：使用相同的预估值
-      const ps = Math.max(5, subway + Math.round(Math.random()*10-5));
+      // 伴侣简化：基于已获取的任一路径时长估算
+      const base = subway != null ? subway : (drive != null ? drive : 45);
+      const ps = Math.max(5, base + Math.round(Math.random()*10-5));
       partHtml = `<div class="r-item"><div class="r-label">💑 伴侣地铁通勤（至${part}）</div><div class="r-value" style="${ps<=limit?'':'color:var(--danger)'}">${ps} 分钟 ${ps<=limit?'✅':'⚠️超出'}</div></div>`;
     }
 
@@ -434,9 +440,9 @@ window.LocationMod = (function() {
         <h4>通勤分析结果 ${useReal?'<span style="font-size:11px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px;margin-left:6px;">🌐 实时</span>':''}</h4>
         <div class="big-num" style="font-size:20px;">${community} → ${work}</div>
         <div class="result-grid">
-          <div class="r-item"><div class="r-label">🟢 地铁（公交+步行）</div><div class="r-value" style="${subwayOK?'':'color:var(--danger)'}">${subway} 分钟${subwayDist} ${subwayOK?'✅':'⚠️超出'}</div></div>
-          <div class="r-item"><div class="r-label">🚗 自驾</div><div class="r-value" style="${driveOK?'':'color:var(--danger)'}">${drive} 分钟${driveDist} ${driveOK?'✅':'⚠️超出'}</div></div>
-          <div class="r-item"><div class="r-label">🚴 骑行/公交</div><div class="r-value">${Math.round(subway*1.2)} 分钟</div></div>
+          <div class="r-item"><div class="r-label">🟢 地铁（公交+步行）</div><div class="r-value" style="${subwayOK?'':'color:var(--danger)'}">${subway==null?'未获取':subway} 分钟${subwayDist} ${subway==null?'⚠️':(subwayOK?'✅':'⚠️超出')}</div></div>
+          <div class="r-item"><div class="r-label">🚗 自驾</div><div class="r-value" style="${driveOK?'':'color:var(--danger)'}">${drive==null?'未获取':drive} 分钟${driveDist} ${drive==null?'⚠️':(driveOK?'✅':'⚠️超出')}</div></div>
+          <div class="r-item"><div class="r-label">🚴 骑行/公交</div><div class="r-value">${subway==null?'未获取':Math.round(subway*1.2)} 分钟</div></div>
           ${partHtml}
         </div>
       </div>
@@ -444,51 +450,14 @@ window.LocationMod = (function() {
     `;
   }
 
-  // 本地模拟（高德未配置/调用失败时回退）
-  function _calcCommuteLocal(work, part, district, community, exp, limit) {
-    const commuteBase = {
-      '鼓楼':{subway:15,drive:20}, '玄武':{subway:18,drive:22}, '建邺':{subway:22,drive:28},
-      '秦淮':{subway:20,drive:25}, '雨花台':{subway:28,drive:30}, '江宁':{subway:40,drive:35},
-      '栖霞':{subway:35,drive:32}, '浦口':{subway:45,drive:40}, '六合':{subway:70,drive:60},
-      '溧水':{subway:80,drive:70}, '高淳':{subway:100,drive:90}
-    };
-    const info = commuteBase[district] || {subway:40, drive:35};
-    let subway = info.subway, drive = info.drive;
-    let shift = 0;
-    if (/仙林|栖霞/.test(work)) shift = district==='栖霞'?-15:(district==='江宁'?10:0);
-    else if (/江北|浦口|高新区/.test(work)) shift = district==='浦口'?-15:5;
-    else if (/软件谷|铁心桥|雨花/.test(work)) shift = district==='雨花台'?-10:(district==='江宁'?-5:10);
-    else if (/江宁|百家湖|九龙湖/.test(work)) shift = district==='江宁'?-12:5;
-    subway += shift; drive += shift;
-    subway = Math.max(5, subway); drive = Math.max(5, drive);
-    const subwayOK = subway <= limit, driveOK = drive <= limit;
-
-    let partHtml = '';
-    if (part) {
-      let shift2 = 0;
-      if (/仙林|栖霞/.test(part)) shift2 = district==='栖霞'?-15:5;
-      const ps = Math.max(5, subway+shift2);
-      partHtml = `<div class="r-item"><div class="r-label">伴侣地铁通勤</div><div class="r-value" style="${ps<=limit?'':'color:var(--danger)'}">${ps} 分钟 ${ps<=limit?'✅':'⚠️超出'}</div></div>`;
-    }
-
-    let advice, color;
-    if (subwayOK && driveOK) { advice='通勤在可接受范围，该板块可达性良好'; color='tag-success'; }
-    else if (subwayOK || driveOK) { advice='一种方式可接受，另一种超出；建议优先选地铁/自驾更优方案'; color='tag-primary'; }
-    else { advice='两种通勤方式均超出上限，长期居住需考虑时间成本与疲劳度'; color='tag-danger'; }
-
-    document.getElementById('c_result').innerHTML = `
-      <div class="calc-result" style="background:linear-gradient(135deg,var(--primary),var(--accent));">
-        <h4>通勤分析结果 <span style="font-size:11px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px;margin-left:6px;">📊 本地模拟</span></h4>
-        <div class="big-num" style="font-size:20px;">${community} → ${work}</div>
-        <div class="result-grid">
-          <div class="r-item"><div class="r-label">🟢 地铁（推荐）</div><div class="r-value" style="${subwayOK?'':'color:var(--danger)'}">${subway} 分钟 ${subwayOK?'✅':'⚠️超出'}</div></div>
-          <div class="r-item"><div class="r-label">🚗 自驾</div><div class="r-value" style="${driveOK?'':'color:var(--danger)'}">${drive} 分钟 ${driveOK?'✅':'⚠️超出'}</div></div>
-          <div class="r-item"><div class="r-label">🚴 骑行/公交</div><div class="r-value">${Math.round(subway*1.2)} 分钟</div></div>
-          ${partHtml}
-        </div>
-      </div>
-      <div style="margin-top:14px;"><span class="tag ${color}" style="padding:4px 10px;font-size:12px;">💡 ${advice}</span></div>
-    `;
+  // 结果区渲染错误/未配置提示（不做本地模拟）
+  function _renderErr(elId, msg, goConfig) {
+    document.getElementById(elId).innerHTML = `
+      <div style="border:1px solid var(--danger);background:var(--danger-soft);border-radius:10px;padding:18px;text-align:center;">
+        <div style="font-size:26px;">⚠️</div>
+        <p style="margin:10px 0 14px;font-size:13px;color:var(--text-1);line-height:1.7;">${msg}</p>
+        ${goConfig ? '<button class="btn btn-primary btn-sm" onclick="App.navigate(\'settings\')">⚙️ 前往配置高德 API</button>' : ''}
+      </div>`;
   }
   function applyMapKey() { App.navigate('settings'); }
 
@@ -671,52 +640,47 @@ window.LocationMod = (function() {
       </div>`;
 
     let data = [];
-    let dataSource = '';
     let centerLoc = null;  // 小区坐标，供后续地图渲染使用
     let allPois = [];      // 所有 POI（含坐标），供地图标注
 
     if (useReal) {
       centerLoc = await geocode(comm, '南京');
       if (!centerLoc) {
-        Utils.toast('小区地址解析失败，已回退本地模拟','warn');
-        data = _facilityMockData();
-        dataSource = '📊 数据来源：本地模拟（地址解析失败）';
-      } else {
-        // 高德 POI 类型码：地铁站150500/医院090100/超市060100/学校141200/商场060100/公园110100/银行160100/餐饮050000
-        const categories = [
-          { cat:'🚇 地铁站', types:'150500', color:'#1677FF', icon:'metro' },
-          { cat:'🏥 医院/诊所', types:'090100', color:'#F5222D', icon:'hospital' },
-          { cat:'🛒 商超/菜场', types:'060101,060400', color:'#FA8C16', icon:'cart' },
-          { cat:'🎓 学校/幼儿园', types:'141200,141205', color:'#722ED1', icon:'school' },
-          { cat:'🛍️ 商场/影院', types:'060100,080600', color:'#EB2F96', icon:'mall' },
-          { cat:'🌳 公园/绿地', types:'110101', color:'#52C41A', icon:'park' },
-          { cat:'🏦 银行/ATM', types:'160100', color:'#13C2C2', icon:'bank' },
-        ];
-        const results = await Promise.all(categories.map(async c => {
-          const pois = await searchAround(centerLoc, c.types, 3000);
-          // 保留坐标供地图标注
-          pois.forEach(p => {
-            if (p.location) allPois.push({ ...p, cat: c.cat, color: c.color });
-          });
-          return {
-            category: c.cat,
-            count: pois.length,
-            names: pois.slice(0,5).map(p => `${p.name}(${Math.round(Number(p.distance)||0)}m)`),
-            distance: '<3km'
-          };
-        }));
-        data = results.filter(r => r.count > 0);
-        if (!data.length) {
-          Utils.toast('周边未搜索到POI，已回退本地模拟','warn');
-          data = _facilityMockData();
-          dataSource = '📊 数据来源：本地模拟（API未返回结果）';
-        } else {
-          dataSource = '🌐 数据来源：高德地点搜索API（真实POI） · 地图组件由高德JS API渲染';
-        }
+        _renderErr('f_result', '小区地址解析失败：请确认小区名正确，且高德 Web 服务 Key 有效。', true);
+        return;
+      }
+      // 高德 POI 类型码：地铁站150500/医院090100/超市060100/学校141200/商场060100/公园110100/银行160100/餐饮050000
+      const categories = [
+        { cat:'🚇 地铁站', types:'150500', color:'#1677FF', icon:'metro' },
+        { cat:'🏥 医院/诊所', types:'090100', color:'#F5222D', icon:'hospital' },
+        { cat:'🛒 商超/菜场', types:'060101,060400', color:'#FA8C16', icon:'cart' },
+        { cat:'🎓 学校/幼儿园', types:'141200,141205', color:'#722ED1', icon:'school' },
+        { cat:'🛍️ 商场/影院', types:'060100,080600', color:'#EB2F96', icon:'mall' },
+        { cat:'🌳 公园/绿地', types:'110101', color:'#52C41A', icon:'park' },
+        { cat:'🏦 银行/ATM', types:'160100', color:'#13C2C2', icon:'bank' },
+      ];
+      const results = await Promise.all(categories.map(async c => {
+        const pois = await searchAround(centerLoc, c.types, 3000);
+        // 保留坐标供地图标注
+        pois.forEach(p => {
+          if (p.location) allPois.push({ ...p, cat: c.cat, color: c.color });
+        });
+        return {
+          category: c.cat,
+          count: pois.length,
+          names: pois.slice(0,5).map(p => `${p.name}(${Math.round(Number(p.distance)||0)}m)`),
+          distance: '<3km'
+        };
+      }));
+      data = results.filter(r => r.count > 0);
+      if (!data.length) {
+        _renderErr('f_result', '高德周边搜索未返回任何 POI 结果，请确认小区名书写正确或稍后重试。', true);
+        return;
       }
     } else {
-      data = _facilityMockData();
-      dataSource = '📊 数据来源：本地模拟数据 · 如需真实POI请配置高德API Key';
+      // 未配置高德 Key：不做本地模拟，提示前往配置
+      document.getElementById('f_result').innerHTML = Utils.apiGate('amap');
+      return;
     }
 
     const totalScore = Math.round(75 + Math.random()*15);
@@ -837,21 +801,13 @@ window.LocationMod = (function() {
       <p style="font-size:12.5px;color:var(--text-3);">${from} → ${to}（${mode==='driving'?'驾车':mode==='walking'?'步行':mode==='transit'?'公交':mode==='bicycling'?'骑行':'-'}）</p></div>`;
 
     if (!useReal) {
-      // 本地降级：估算直线距离（板块间平均距离）
-      const distRecord = _estimateDistance(from, to);
-      const walkTime = Math.round(distRecord / 60); // 5km/h = 12min/km
+      // 未配置高德 Key：不做本地估算模拟，提示前往配置
       resultBox.innerHTML = `
-        <div style="padding:16px;background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;border-radius:10px;">
-          <div style="font-size:11.5px;opacity:0.9;">📊 本地估算（未配置高德Key）</div>
-          <h4 style="font-size:15px;margin:6px 0;">${from} → ${to}</h4>
-          <div style="display:flex;gap:24px;margin-top:10px;font-size:13px;">
-            <div><strong style="font-size:18px;">${distRecord}</strong> km<br/><span style="opacity:0.85;">估算直线距离</span></div>
-            <div><strong style="font-size:18px;">${walkTime}</strong> 分钟<br/><span style="opacity:0.85;">步行估算</span></div>
-          </div>
-        </div>
-        <p style="margin-top:10px;font-size:11.5px;color:var(--text-3);">⚠️ 未配置高德 Key，仅返回粗略估算。</p>
-        <button class="btn btn-accent btn-sm" style="margin-top:8px;" onclick="App.navigate('settings')">去配置高德Key</button>
-      `;
+        <div style="border:1px solid var(--danger);background:var(--danger-soft);border-radius:10px;padding:18px;text-align:center;">
+          <div style="font-size:26px;">⚠️</div>
+          <p style="margin:10px 0 14px;font-size:13px;line-height:1.7;">未配置高德 Web 服务 Key，无法进行真实距离测算。<br/>请先在设置中配置后重试。</p>
+          <button class="btn btn-primary btn-sm" onclick="App.navigate('settings')">⚙️ 前往配置高德 API</button>
+        </div>`;
       return;
     }
 
@@ -1064,23 +1020,6 @@ window.LocationMod = (function() {
     }
   }
 
-  // 简单距离估算（板块级，未配置Key时用）
-  function _estimateDistance(from, to) {
-    // 用板块中心点估算
-    const centers = {
-      '江宁':[118.85,31.95],'浦口':[118.62,32.06],'栖霞':[118.86,32.15],
-      '雨花台':[118.78,31.99],'鼓楼':[118.77,32.07],'玄武':[118.79,32.05],
-      '建邺':[118.73,32.00],'秦淮':[118.79,32.02],'六合':[119.02,32.37],
-      '溧水':[119.03,31.65],'高淳':[118.88,31.33]
-    };
-    const findLoc = (name) => {
-      for (const d in centers) if (name.includes(d)) return centers[d];
-      return [118.80, 32.05]; // 默认市中心
-    };
-    const [x1,y1] = findLoc(from);
-    const [x2,y2] = findLoc(to);
-    return _haversine(x1+','+y1, x2+','+y2);
-  }
   // 两点坐标 → 直线距离 km（保留2位小数）
   function _haversine(loc1, loc2) {
     const [lng1, lat1] = loc1.split(',').map(Number);
@@ -1144,24 +1083,12 @@ window.LocationMod = (function() {
     try { if (AMap.Scale) map.addControl(new AMap.Scale()); } catch(e) {}
     try { if (AMap.ToolBar) map.addControl(new AMap.ToolBar({ position: 'RB', locate: false })); } catch(e) {}
   }
-  function _facilityMockData() {
-    const templateFacility = (category, count, names, distance) => ({category, count, names, distance});
-    return [
-      templateFacility('🚇 地铁站', 3, ['百家湖站(约580m)','胜太路站(约900m)','小龙湾站(约1.2km)'], '<1.5km'),
-      templateFacility('🏥 医院/诊所', 4, ['江宁医院(约1.5km)','社区卫生中心(约350m)','同仁医院(约2.5km)','康复诊所(约800m)'], '<3km'),
-      templateFacility('🛒 商超/菜场', 5, ['大型菜场(约400m)','永辉超市(约700m)','苏果便利(约250m)','盒马鲜生(约1.1km)','社区团购点(约150m)'], '<1km'),
-      templateFacility('🎓 学校/幼儿园', 4, ['小区内幼儿园(约200m)','百家湖小学(约800m)','初中(约1.2km)','早教中心(约500m)'], '<1.5km'),
-      templateFacility('🛍️ 商场/影院', 3, ['景枫KINGMO(约1.0km)','21世纪太阳城(约1.1km)','万达影城(约1.2km)'], '<1.5km'),
-      templateFacility('🌳 公园/绿地', 2, ['百家湖公园(约500m)','城市休闲广场(约300m)'], '<1km'),
-      templateFacility('🏦 银行/ATM', 5, ['工商银行(约200m)','建设银行(约300m)','农业银行(约450m)','招商银行ATM','南京银行(约700m)'], '<1km'),
-    ];
-  }
 
   // ===== 区域房价趋势 =====
   function renderTrend() {
     const districts = Object.keys(DISTRICT_DATA);
     return `<div class="card">
-      <div class="card-title">📈 近12个月南京各板块二手房均价走势（元/㎡）<span style="font-weight:400;font-size:11.5px;color:var(--text-3);">（模拟数据，生产环境可对接每月抓取任务）</span></div>
+      <div class="card-title">📈 近12个月南京各板块二手房均价走势（元/㎡）<span style="font-weight:400;font-size:11.5px;color:var(--text-3);">（需对接月度抓取数据源，当前为占位曲线）</span></div>
       <div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap;">
         ${districts.map((d,i)=>{
           const colors = ['#1E3A8A','#3B82F6','#D4A24C','#16A34A','#DC2626','#0EA5E9','#7C3AED','#0891B2','#65A30D','#9333EA','#E9C478'];
@@ -1241,7 +1168,7 @@ window.LocationMod = (function() {
           <thead><tr><th>板块</th><th>去年同期</th><th>本月均价</th><th>年涨跌幅</th><th>最高</th><th>最低</th><th>潜力评级</th></tr></thead>
           <tbody>${tableRows}</tbody>
         </table></div>
-        <p style="font-size:12px;color:var(--text-3);margin-top:6px;">💡 模拟数据仅供演示。真实场景可由TRAE定时任务每月1日抓取各板块公开成交均价，存入本地JSON后使用同一张图展示。</p>
+        <p style="font-size:12px;color:var(--text-3);margin-top:6px;">⚠️ 当前曲线为占位数据。真实均价需由月度抓取任务（如每周一自动采集各板块公开成交数据）提供数据源后替换，切勿将占位曲线视为真实行情。</p>
       `;
     } catch(e) {
       console.error('renderTrendChart 渲染失败:', e.message, e.stack);

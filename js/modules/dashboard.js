@@ -1,5 +1,5 @@
 /* ============================================
-   M7 个人画像仪表盘模块
+   M7 看房画像模块
    ============================================ */
 window.DashboardMod = (function() {
 
@@ -58,7 +58,7 @@ window.DashboardMod = (function() {
     const html = `
       <div class="page-header">
         <div>
-          <h2><span class="emoji">📊</span>个人画像仪表盘</h2>
+          <h2><span class="emoji">📊</span>看房画像</h2>
           <p class="page-desc">购房计划全貌一览 — 期望、统计、偏好、进度可视化</p>
         </div>
         <div class="page-actions">

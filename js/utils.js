@@ -202,9 +202,9 @@ window.Utils = (function() {
     if (!rec) return {score: 0, detail: {}};
     const w = (exp && exp.weights) || {};
     const detail = {};
-    const hasExp = !!exp && (exp.budgetMin || exp.budgetMax || exp.areaMin || exp.areaMax
+    const hasExp = !!(exp && (exp.budgetMin || exp.budgetMax || exp.areaMin || exp.areaMax
       || exp.roomsNeeded || (exp.preferredDistricts && exp.preferredDistricts.length)
-      || (exp.mustHaves && exp.mustHaves.length));
+      || (exp.mustHaves && exp.mustHaves.length)));
 
     // 预算匹配 (25%)
     let budgetScore = 0;
@@ -247,9 +247,14 @@ window.Utils = (function() {
       // 即便不在优先区，也给到50保底，避免 40 直接拖垮
       commuteScore = exp.preferredDistricts.includes(rec.district) ? 100 : 50;
     }
-    if (rec.dimRatings && rec.dimRatings.commute) {
-      commuteScore = (commuteScore + (rec.dimRatings.commute / 5 * 100)) / 2;
-    }
+    const dr = rec.dimRatings || {};
+    // 兼容 dimRatings 对象{commute:4}与历史数组[预算,户型,通勤,配套,观感,潜力]两种结构
+    const dimVal = (k, idx) => {
+      const v = Array.isArray(dr) ? dr[idx] : dr[k];
+      return (typeof v === 'number' && isFinite(v)) ? v : null;
+    };
+    const cv = dimVal('commute', 2);
+    if (cv != null) commuteScore = (commuteScore + (cv / 5 * 100)) / 2;
     detail.commute = Math.round(commuteScore);
 
     // 配套/硬性要求 (15%)
@@ -267,9 +272,8 @@ window.Utils = (function() {
       // 避免 0/N=0 直接打趴下；按比例 + 保底20
       facilityScore = Math.max(20, (ok / exp.mustHaves.length) * 100);
     }
-    if (rec.dimRatings && rec.dimRatings.facility) {
-      facilityScore = (facilityScore + (rec.dimRatings.facility / 5 * 100)) / 2;
-    }
+    const fv = dimVal('facility', 3);
+    if (fv != null) facilityScore = (facilityScore + (fv / 5 * 100)) / 2;
     detail.facility = Math.round(facilityScore);
 
     // 个人观后感 (15%)
@@ -353,6 +357,9 @@ window.Utils = (function() {
 
   // 渲染匹配度圆环 · 5 档色阶与 decisionAdvice 对齐
   function matchRingHTML(score) {
+    // 历史脏数据兜底：异常值得分按 0 展示，避免圆环/数字为 NaN
+    if (!isFinite(score) || score == null) score = 0;
+    score = Math.max(0, Math.min(100, Math.round(score)));
     const r = 28, c = 2 * Math.PI * r;
     const offset = c - (score / 100) * c;
     let color = '#DC2626';                         // <40 建议放弃：红
@@ -436,6 +443,55 @@ window.Utils = (function() {
   // 调用方式重置（例如主题切换时——目前暂只一套主题）
   function resetTheme() { _THEME = null; }
 
+  // ========== API 配置状态（供各模块判断"需要配置"而非本地模拟） ==========
+  function getApiKeys() {
+    const g = k => (localStorage.getItem(k) || '').trim();
+    return {
+      amapJs:  g('k_amap_js'),
+      amapSrv: g('k_amap_srv'),
+      ai:      g('k_ai'),
+      beikeAk: g('k_beike_ak'),
+      beikeSk: g('k_beike_sk')
+    };
+  }
+  function apiConfigured(name) {
+    const k = getApiKeys();
+    if (name === 'amap')   return !!k.amapSrv;
+    if (name === 'amapJs') return !!k.amapJs;
+    if (name === 'ai')     return !!k.ai;
+    if (name === 'beike')  return !!(k.beikeAk && k.beikeSk);
+    return false;
+  }
+  function apiStatus() {
+    const k = getApiKeys();
+    return [
+      { id:'amap',  label:'高德地图',  icon:'🗺️', configured: !!k.amapSrv },
+      { id:'ai',    label:'AI大模型',  icon:'🤖', configured: !!k.ai },
+      { id:'beike', label:'贝壳数据源', icon:'🏠', configured: !!(k.beikeAk && k.beikeSk) },
+    ];
+  }
+  // 渲染"需要配置 API"的空状态门槛卡片
+  function apiGate(name, opts={}) {
+    const map = {
+      amap:  { icon:'🗺️', title:'需要配置「高德地图 API」',
+        desc:'区位分析（通勤测算 / 学区查询 / 周边配套 / 距离测算 / 房价趋势）依赖高德地图 Web 服务 Key 获取真实数据。' },
+      ai:    { icon:'🤖', title:'需要配置「AI 大模型 API」',
+        desc:'AI 深度决策分析依赖大模型接口。配置 Key 后可基于你的真实房源数据生成智能购买建议。' },
+      beike: { icon:'🏠', title:'需要配置「房源数据源」',
+        desc:'房源推荐需接入真实数据源：贝壳开放平台 API，或使用「粘贴链接手动导入」录入真实房源。' },
+    };
+    const m = map[name] || map.amap;
+    return `<div class="card api-gate">
+      <div class="api-gate-icon">${m.icon}</div>
+      <h3>${m.title}</h3>
+      <p>${m.desc}${opts.extra || ''}</p>
+      <div class="api-gate-actions">
+        <button class="btn btn-primary btn-sm" onclick="App.navigate('settings')">⚙️ 前往配置</button>
+        ${opts.manual || ''}
+      </div>
+    </div>`;
+  }
+
   return {
     formatWan, formatYuan, formatArea, formatRooms,
     calcHouseAge, calcHouseAgeText, calcZone,
@@ -447,5 +503,6 @@ window.Utils = (function() {
     notify, calcMatchScore, decisionAdvice, matchRingHTML,
     downloadFile, readFileAsText,
     cssColor, theme, resetTheme,
+    getApiKeys, apiConfigured, apiStatus, apiGate,
   };
 })();
