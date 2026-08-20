@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,600&family=Inter:wght@300;400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Serif:wght@400;700&family=Work+Sans:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260820g">
+<link rel="stylesheet" href="css/style.css?v=20260820h">
 </head>
 <body>
 
@@ -30,8 +30,8 @@
       </div>
     </div>
 
-    <!-- 门户式导航 · 单排 12 项 · 纯文字（无图标），字号更大便于识别 -->
-    <nav class="nav-scroll">
+    <!-- 紧凑导航 · 含看房助手子菜单下拉 -->
+    <nav class="nav-scroll" id="navList">
       <a class="nav-item active" data-view="dashboard"><em>看房画像</em></a>
       <a class="nav-item" data-view="expectation"><em>期望档案</em></a>
       <a class="nav-item" data-view="calendar"><em>看房日程</em></a>
@@ -41,8 +41,13 @@
       <a class="nav-item" data-view="report"><em>看房报告</em></a>
       <a class="nav-item" data-view="workflow"><em>购房进度</em></a>
       <a class="nav-item" data-view="aids"><em>检查清单</em></a>
-      <a class="nav-item" data-view="finance"><em>看房助手</em></a>
-      <a class="nav-item" data-view="location"><em>区位分析</em></a>
+      <div class="nav-dropdown">
+        <a class="nav-item nav-trigger"><em>看房助手 ▾</em></a>
+        <div class="nav-submenu">
+          <a class="nav-sub-item" data-view="finance"><em>💰 财务计算</em></a>
+          <a class="nav-sub-item" data-view="location"><em>🗺️ 区位分析</em></a>
+        </div>
+      </div>
       <a class="nav-item" data-view="settings"><em>系统设置</em></a>
     </nav>
 
@@ -95,6 +100,6 @@
 <script src="js/modules/workflow.js?v=20260820b"></script>
 <script src="js/modules/report.js?v=20260820b"></script>
 <script src="js/modules/settings.js?v=20260820b"></script>
-<script src="js/app.js?v=20260820d"></script>
+<script src="js/app.js?v=20260820e"></script>
 </body>
 </html>

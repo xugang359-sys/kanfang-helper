@@ -37,8 +37,15 @@ window.App = (function() {
     if (!v) return;
     curView = view;
     // 侧边栏
-    document.querySelectorAll('.nav-item').forEach(el => {
+    document.querySelectorAll('.nav-item, .nav-sub-item').forEach(el => {
       el.classList.toggle('active', el.dataset.view === view);
+    });
+    // 子菜单触发器高亮（当子项被选中时）
+    document.querySelectorAll('.nav-trigger').forEach(el => {
+      const parent = el.closest('.nav-dropdown');
+      if (!parent) return;
+      const hasActive = parent.querySelectorAll('.nav-sub-item.active').length > 0;
+      el.classList.toggle('active', hasActive);
     });
     // 移动端Tabbar
     document.querySelectorAll('.mobile-tabbar .tab').forEach(el => {
@@ -76,15 +83,28 @@ window.App = (function() {
   }
 
   function bindNav() {
-    // 顶部门户导航
-    document.querySelectorAll('#navList .nav-item').forEach(el => {
+    // 顶部门户导航（含子菜单项）
+    document.querySelectorAll('#navList .nav-item, #navList .nav-sub-item').forEach(el => {
+      if (!el.dataset.view) return; // 跳过 trigger
       el.addEventListener('click', (e) => {
         e.preventDefault();
         navigate(el.dataset.view);
-        // 点击后小屏滚回开头，避免隐藏区域
         if (window.innerWidth < 1100) {
           try { document.getElementById('navList').scrollTo({ left: el.offsetLeft - 40, behavior: 'smooth' }); } catch(_){}
         }
+      });
+    });
+    // 子菜单 hover/click 展开
+    document.querySelectorAll('#navList .nav-dropdown').forEach(dd => {
+      const trigger = dd.querySelector('.nav-trigger');
+      const submenu = dd.querySelector('.nav-submenu');
+      if (!trigger || !submenu) return;
+      let leaveTimer = null;
+      dd.addEventListener('mouseenter', () => { clearTimeout(leaveTimer); submenu.classList.add('show'); });
+      dd.addEventListener('mouseleave', () => { leaveTimer = setTimeout(()=>submenu.classList.remove('show'), 300); });
+      trigger.addEventListener('click', (e) => {
+        e.preventDefault();
+        submenu.classList.toggle('show');
       });
     });
     // 移动端Tabbar

@@ -307,6 +307,41 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 10px rgba(212,162,76,0.4);
 }
 .nav-item.active em { font-weight: 600; }
+
+/* ── 看房助手子菜单下拉 ── */
+.nav-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.nav-submenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 160px;
+  background: #fff;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  padding: 6px 0;
+  display: none;
+  z-index: 1000;
+}
+.nav-submenu.show { display: block; animation: navSubFade 0.2s ease; }
+@keyframes navSubFade { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+.nav-sub-item {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  height: 36px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.nav-sub-item:hover { background: var(--primary-soft); color: var(--primary); }
+.nav-sub-item.active { color: var(--primary); font-weight: 600; background: var(--primary-soft); }
+.nav-sub-item em { font-style: normal; }
 .topbar-actions {
   display: flex; align-items: center; gap: 12px;
   padding: 18px 0 18px 8px;
