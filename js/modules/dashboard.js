@@ -218,7 +218,8 @@ window.DashboardMod = (function() {
     const prices = records.map(r=>r.totalPrice).filter(Boolean).sort((a,b)=>a-b);
     const avg = prices.length ? (prices.reduce((a,b)=>a+b,0)/prices.length).toFixed(1) : 0;
     chart.setOption({
-      grid:{left:60,right:30,top:30,bottom:40},
+      grid:{left:60,right:30,top:55,bottom:40},
+      legend:{data:['总价','预算上限','预算下限'],top:5,textStyle:{fontSize:11},itemWidth:14,itemHeight:10},
       tooltip:{trigger:'axis', formatter: params => {
         const p = params[0]; return `${p.name}<br/>${p.seriesName}: ${p.value}万`;
       }},
@@ -233,8 +234,8 @@ window.DashboardMod = (function() {
             return C.danger;
           }}, barMaxWidth:40
         },
-        {name:'预算上限', type:'line', data: records.map(()=>max), lineStyle:{color:C.primary,type:'dashed',width:2}, symbol:'none', tooltip:{formatter:'预算上限: '+max+'万'}},
-        {name:'预算下限', type:'line', data: records.map(()=>min), lineStyle:{color:C.accent,type:'dashed',width:2}, symbol:'none', tooltip:{formatter:'预算下限: '+min+'万'}},
+        {name:'预算上限', type:'line', data: records.map(()=>max), lineStyle:{color:C.primary,type:'dashed',width:2.5}, symbol:'none', label:{show:true, position:'top', formatter: max+'万', fontSize:10, color:C.primary}},
+        {name:'预算下限', type:'line', data: records.map(()=>min), lineStyle:{color:C.accent,type:'dashed',width:2.5}, symbol:'none', label:{show:true, position:'bottom', formatter: min+'万', fontSize:10, color:C.accent}},
       ]
     });
   }

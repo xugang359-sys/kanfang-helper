@@ -226,13 +226,18 @@ window.LocationMod = (function() {
       if (input._acBound) return;
       input._acBound = true;
       const poiType = input.dataset.poiType || '';
+      // 下拉面板挂载到 body，避免被父容器 overflow:hidden 裁切
       const container = document.createElement('div');
       container.className = 'ac-dropdown';
-      container.style.cssText = 'position:absolute;left:0;top:100%;margin-top:2px;z-index:9999;background:#fff;border:1px solid var(--border-light);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,0.14);max-height:240px;overflow-y:auto;display:none;min-width:100%;width:max-content;max-width:360px;';
-      // 确保 input 的父级有 position:relative
-      const parent = input.parentElement;
-      parent.style.position = parent.style.position || 'relative';
-      parent.appendChild(container);
+      container.style.cssText = 'position:fixed;z-index:99999;background:#fff;border:1px solid var(--border-light);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,0.14);max-height:240px;overflow-y:auto;display:none;min-width:240px;max-width:400px;';
+      document.body.appendChild(container);
+
+      function positionDropdown() {
+        const rect = input.getBoundingClientRect();
+        container.style.left = rect.left + 'px';
+        container.style.top = (rect.bottom + 2) + 'px';
+        container.style.minWidth = Math.max(rect.width, 240) + 'px';
+      }
 
       let _timer = null;
       input.addEventListener('input', () => {
@@ -243,16 +248,21 @@ window.LocationMod = (function() {
           const tips = await fetchInputTips(kw, poiType);
           if (!tips.length) { container.style.display='none'; return; }
           container.innerHTML = tips.map(t => `
-            <div class="ac-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--bg-2);font-size:12.5px;" data-name="${t.name}" data-loc="${t.location||''}">
+            <div class="ac-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--bg-2);font-size:12.5px;" data-name="${t.name}" data-loc="${t.location||''}" data-district="${t.district||''}">
               <div style="color:var(--text-1);font-weight:500;">${t.name}</div>
               ${t.address?`<div style="color:var(--text-3);font-size:11px;margin-top:2px;">${t.district||''} ${t.address}</div>`:''}
             </div>`).join('');
+          positionDropdown();
           container.style.display = 'block';
           container.querySelectorAll('.ac-item').forEach(item => {
             item.addEventListener('mousedown', (e) => {
               e.preventDefault();
               input.value = item.dataset.name;
               if (item.dataset.loc) input.dataset.loc = item.dataset.loc;
+              // 自动同步所在区域下拉
+              if (item.dataset.district) {
+                syncDistrictFromAutocomplete(input, item.dataset.district);
+              }
               container.style.display = 'none';
               input.dispatchEvent(new Event('ac-selected'));
             });
@@ -262,6 +272,28 @@ window.LocationMod = (function() {
       input.addEventListener('blur', () => {
         setTimeout(()=>container.style.display='none', 200);
       });
+      // 滚动/resize 时重新定位
+      window.addEventListener('scroll', () => { if (container.style.display!=='none') positionDropdown(); }, true);
+      window.addEventListener('resize', () => { if (container.style.display!=='none') positionDropdown(); }, true);
+    });
+  }
+
+  // 自动补全选中地点后，查找同表单内的区域下拉并联动更新
+  function syncDistrictFromAutocomplete(input, districtRaw) {
+    const district = (districtRaw||'').replace('区','').replace('县','');
+    if (!district) return;
+    // 向上查找最近的 card 或 grid 容器
+    let scope = input.closest('.card') || input.closest('.grid-2') || input.parentElement;
+    if (!scope) return;
+    // 查找同容器内的区域下拉
+    const distSelects = scope.querySelectorAll('select[id$="_dist"], select[id$="_district"]');
+    distSelects.forEach(sel => {
+      const opts = [...sel.options];
+      const match = opts.find(o => o.value === district || o.text === district);
+      if (match && sel.value !== match.value) {
+        sel.value = match.value;
+        sel.dispatchEvent(new Event('change'));
+      }
     });
   }
 
@@ -282,7 +314,7 @@ window.LocationMod = (function() {
               ${districts.map(d=>`<option>${d}</option>`).join('')}
             </select></div>
           <div class="form-item"><label>或具体小区名</label>
-            <input type="text" id="c_community" placeholder="如：百家湖花园" data-autocomplete data-poi-type="${POI_TYPES.community}"></div>
+            <input type="text" id="c_community" placeholder="如：百家湖花园" data-autocomplete data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'c_district')"></div>
           <div class="form-item full"><label>可接受通勤时长上限：${exp.maxCommuteTime||45} 分钟 <a onclick="App.navigate('expectation')" style="color:var(--primary);cursor:pointer;text-decoration:underline;">修改</a></label></div>
         </div>
         <div style="text-align:right;margin-top:10px;">
@@ -302,9 +334,34 @@ window.LocationMod = (function() {
   }
   function setSuggestedCommunity() {
     const d = document.getElementById('c_district').value;
-    const seed = RecommendMod;
     const example = (SEED_HOUSES_FALLBACK() || []).find(h=>h.district===d);
     if (example) document.getElementById('c_community').value = example.communityName;
+  }
+
+  // 输入小区名后，自动通过高德POI搜索推断区域并联动下拉
+  async function detectDistrictFromInput(input, selectId) {
+    const name = (input.value||'').trim();
+    if (!name || name.length < 2) return;
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const srvKey = getAmapKey().srv;
+    if (!srvKey) return;
+    try {
+      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(name)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.status === '1' && data.pois && data.pois[0]) {
+        const district = (data.pois[0].adname||'').replace('区','').replace('县','');
+        if (district) {
+          const match = [...sel.options].find(o => o.value === district || o.text === district);
+          if (match && sel.value !== match.value) {
+            sel.value = match.value;
+            sel.dispatchEvent(new Event('change'));
+            Utils.toast(`已识别区域：${district}`, 'info', 1200);
+          }
+        }
+      }
+    } catch(e) {}
   }
   // 避免依赖，写一个内联的
   function SEED_HOUSES_FALLBACK() {
@@ -443,7 +500,6 @@ window.LocationMod = (function() {
 
   // ===== 学区查询 =====
   function renderSchool() {
-    const records = Store.getRecords();
     const districts = Object.keys(DISTRICT_DATA);
     return `<div class="card">
       <div class="card-title">🎓 学区查询</div>
@@ -456,15 +512,8 @@ window.LocationMod = (function() {
           </select>
         </div>
         <div class="form-item">
-          <label>或关联房源记录</label>
-          <select id="s_rec">
-            <option value="">— 选择房源记录 —</option>
-            ${records.map(r=>`<option value="${r.id}">${r.communityName} · ${r.district||''}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-item full">
-          <label>或输入具体小区名查询周边配套距离</label>
-          <input type="text" id="s_comm" placeholder="如：百家湖花园 / 龙江银城花园" data-autocomplete data-poi-type="${POI_TYPES.community}">
+          <label>或按地点查询（输入后自动识别板块）</label>
+          <input type="text" id="s_comm" placeholder="如：百家湖花园 / 龙江银城花园" data-autocomplete data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'s_dist')">
         </div>
       </div>
       <div style="margin-top:10px;"><button class="btn btn-primary" onclick="LocationMod.querySchool()">🔍 查询学区</button></div>
@@ -473,14 +522,9 @@ window.LocationMod = (function() {
   }
   async function querySchool() {
     let dist = document.getElementById('s_dist').value;
-    const recId = document.getElementById('s_rec').value;
     const commInput = document.getElementById('s_comm').value.trim();
     let commName = commInput;
-    if (!dist && recId) {
-      const r = Store.getRecord(recId);
-      if (r) { dist = r.district; commName = commName || r.communityName; }
-    }
-    if (!dist && !commName) { Utils.toast('请选择板块、房源或输入小区名','warn'); return; }
+    if (!dist && !commName) { Utils.toast('请选择板块或输入小区名','warn'); return; }
     if (!dist && commName) {
       // 尝试通过POI搜索推断区域
       const srvKey = getAmapKey().srv;
@@ -607,7 +651,7 @@ window.LocationMod = (function() {
     return `<div class="card">
       <div class="card-title">🏥 周边配套地图（以小区为中心3KM范围）</div>
       <div class="form-grid">
-        <div class="form-item"><label>小区名称</label><input id="f_comm" placeholder="输入小区名或点击下方示例" data-autocomplete data-poi-type="${POI_TYPES.community}"></div>
+        <div class="form-item"><label>小区名称</label><input id="f_comm" placeholder="输入小区名或点击下方示例" data-autocomplete data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'f_dist')"></div>
         <div class="form-item"><label>所在区域</label>
           <select id="f_dist">
             ${Object.keys(DISTRICT_DATA).map(d=>`<option>${d}</option>`).join('')}
@@ -1217,5 +1261,5 @@ window.LocationMod = (function() {
     }
   }
 
-  return { render, setSuggestedCommunity, calcCommute, querySchool, showFacility, calcDistance, renderTrendChart, applyMapKey };
+  return { render, setSuggestedCommunity, detectDistrictFromInput, calcCommute, querySchool, showFacility, calcDistance, renderTrendChart, applyMapKey };
 })();
