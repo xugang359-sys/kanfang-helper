@@ -123,7 +123,22 @@ window.App = (function() {
       const h = location.hash.slice(1);
       if (VIEW_MAP[h]) initView = h;
     }
-    navigate(initView);
+    // 如果 echarts 尚未加载完成（CDN慢），等待最多5秒再渲染
+    if (typeof echarts === 'undefined') {
+      let waited = 0;
+      const waitEcharts = setInterval(() => {
+        waited += 200;
+        if (typeof echarts !== 'undefined' || waited >= 5000) {
+          clearInterval(waitEcharts);
+          navigate(initView);
+          if (typeof echarts === 'undefined') {
+            Utils.toast('图表库加载失败，部分图表可能不显示', 'warn', 3000);
+          }
+        }
+      }, 200);
+    } else {
+      navigate(initView);
+    }
     // 计划提醒延迟检查（给通知权限点的时间）
     setTimeout(() => CalendarMod.checkReminders(), 3000);
     // 欢迎Toast
