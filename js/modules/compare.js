@@ -164,7 +164,7 @@ window.CompareMod = (function() {
 
       <!-- AI决策建议 -->
       <div class="card" id="aiBox">
-        <div class="card-title">🤖 AI智能决策建议 <span style="font-weight:400;font-size:11.5px;color:var(--text-3);">（基于本地评分模型，可点上方"AI决策建议"触发联网深度分析）</span></div>
+        <div class="card-title">📊 总结分析 <span style="font-weight:400;font-size:11.5px;color:var(--text-3);">（基于本地评分模型，可点上方"AI决策建议"触发联网深度分析）</span></div>
         <div style="padding:10px 12px;background:var(--primary-soft);border-radius:8px;margin-bottom:10px;">
           <h4 style="font-size:14px;color:var(--primary);margin-bottom:4px;">📌 综合推荐排序</h4>
           <p style="font-size:13px;">

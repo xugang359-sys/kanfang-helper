@@ -77,10 +77,32 @@ window.LocationMod = (function() {
       const jsKey = (localStorage.getItem('k_amap_js')||'').trim();
       if (!jsKey) { _amapPromise = null; reject(new Error('未配置高德JS Key')); return; }
       const cb = '_amap_init_cb_' + Date.now();
-      window[cb] = function() { resolve(window.AMap); try { delete window[cb]; } catch(e) { window[cb] = undefined; } };
+      let settled = false;
+      // 8秒超时：防止 script 标签加载卡住不返回
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        _amapPromise = null;
+        reject(new Error('高德SDK加载超时（8秒），请检查JS Key或网络'));
+        try { delete window[cb]; } catch(e) {}
+      }, 8000);
+      window[cb] = function() {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(window.AMap);
+        try { delete window[cb]; } catch(e) { window[cb] = undefined; }
+      };
       const s = document.createElement('script');
       s.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(jsKey)}&plugin=AMap.Geocoder,AMap.PlaceSearch,AMap.MarkerClusterer,AMap.Scale,AMap.ToolBar,AMap.Driving,AMap.Walking,AMap.Transfer,AMap.Bicycling,AMap.Polyline,AMap.Geolocation&callback=${cb}`;
-      s.onerror = () => { _amapPromise = null; reject(new Error('高德SDK加载失败')); try { delete window[cb]; } catch(e) {} };
+      s.onerror = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        _amapPromise = null;
+        reject(new Error('高德SDK加载失败（网络错误或Key无效）'));
+        try { delete window[cb]; } catch(e) {}
+      };
       document.head.appendChild(s);
     });
     return _amapPromise;
@@ -787,11 +809,23 @@ window.LocationMod = (function() {
       </div>
       <p style="margin-top:10px;font-size:11.5px;color:var(--text-3);">🌐 数据来源：高德路径规划API（${modeLabel}模式）</p>
       <div id="distMap" style="margin-top:14px;height:420px;border-radius:10px;border:1px solid var(--border-light);background:#f2f4f8;overflow:hidden;position:relative;">
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;z-index:1;">🗺️ 正在加载路径地图…</div>
+        <div id="distMapLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;pointer-events:none;">🗺️ 正在加载路径地图…</div>
       </div>
     `;
-    // 异步渲染地图（marker + 路径连线）
-    renderDistMap(originLoc, destLoc, from, to, mode).catch(() => {
+    // 异步渲染地图（marker + 路径连线），10秒超时兜底
+    let mapTimer = setTimeout(() => {
+      const loadingEl = document.getElementById('distMapLoading');
+      const mapBox = document.getElementById('distMap');
+      if (loadingEl && loadingEl.parentElement === mapBox) {
+        mapBox.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;">⏱️ 地图加载超时，可能是高德JS Key未配置或网络受限。<br/>请到【系统设置】检查高德Key配置，或尝试使用静态地图模式。</div>';
+      }
+    }, 10000);
+    renderDistMap(originLoc, destLoc, from, to, mode).then(() => {
+      clearTimeout(mapTimer);
+      const loadingEl = document.getElementById('distMapLoading');
+      if (loadingEl) loadingEl.remove();
+    }).catch(() => {
+      clearTimeout(mapTimer);
       const box = document.getElementById('distMap');
       if (box) box.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 地图渲染失败，请检查高德JS Key配置。</div>';
     });
