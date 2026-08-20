@@ -218,12 +218,12 @@ window.DashboardMod = (function() {
     const prices = records.map(r=>r.totalPrice).filter(Boolean).sort((a,b)=>a-b);
     const avg = prices.length ? (prices.reduce((a,b)=>a+b,0)/prices.length).toFixed(1) : 0;
     chart.setOption({
-      grid:{left:40,right:20,top:20,bottom:30},
+      grid:{left:60,right:30,top:30,bottom:40},
       tooltip:{trigger:'axis', formatter: params => {
         const p = params[0]; return `${p.name}<br/>${p.seriesName}: ${p.value}万`;
       }},
       xAxis:{type:'category', data: records.map(r=>r.communityName?.slice(0,4)||'-'), axisLabel:{fontSize:10,rotate:30}},
-      yAxis:{type:'value', name:'总价(万)'},
+      yAxis:{type:'value', name:'总价(万)', nameTextStyle:{fontSize:11}, axisLabel:{fontSize:11}},
       series:[
         {
           name:'总价', type:'bar', data: records.map(r=>r.totalPrice||0), itemStyle:{color:function(p){
@@ -231,9 +231,10 @@ window.DashboardMod = (function() {
             if (p.value >= min && p.value <= max) return C.success;
             if (p.value < min) return C.warn;
             return C.danger;
-          }}},
-          {name:'预算上限', type:'line', markLine:{symbol:'none',data:[{yAxis: max, name:'上限', lineStyle:{color:C.primary,type:'dashed'}}]}, data:[]},
-          {name:'预算下限', type:'line', markLine:{symbol:'none',data:[{yAxis: min, name:'下限', lineStyle:{color:C.accent,type:'dashed'}}]}, data:[]},
+          }}, barMaxWidth:40
+        },
+        {name:'预算上限', type:'line', data: records.map(()=>max), lineStyle:{color:C.primary,type:'dashed',width:2}, symbol:'none', tooltip:{formatter:'预算上限: '+max+'万'}},
+        {name:'预算下限', type:'line', data: records.map(()=>min), lineStyle:{color:C.accent,type:'dashed',width:2}, symbol:'none', tooltip:{formatter:'预算下限: '+min+'万'}},
       ]
     });
   }
@@ -262,12 +263,12 @@ window.DashboardMod = (function() {
     const vals = Object.values(range);
     const total = vals.reduce((a,b)=>a+b,0) || 1;
     chart.setOption({
-      grid:{left:50,right:20,top:20,bottom:30},
+      grid:{left:55,right:25,top:25,bottom:35},
       tooltip:{trigger:'axis', formatter: p => {
         const d = p[0]; return `${d.name}<br/>房源数：<b>${d.value}</b> 套 (${(d.value/total*100).toFixed(1)}%)`;
       }},
-      xAxis:{type:'category', data:labels, axisLabel:{fontSize:11,interval:0}},
-      yAxis:{type:'value', name:'套'},
+      xAxis:{type:'category', data:labels, axisLabel:{fontSize:10,interval:0,rotate:15}},
+      yAxis:{type:'value', name:'套', nameTextStyle:{fontSize:11}, axisLabel:{fontSize:11}},
       series:[{type:'bar', data:vals, barWidth:'50%',
         label:{show:true, position:'top', formatter:'{c}套'},
         itemStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:C.primaryLight},{offset:1,color:C.primary}])}

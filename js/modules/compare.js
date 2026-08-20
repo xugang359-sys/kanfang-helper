@@ -176,12 +176,12 @@ window.CompareMod = (function() {
           const det = d.m.detail;
           const strengths = Object.entries(det).filter(([k,v])=>v>=75).map(([k,v])=>names[k]).join('、') || '暂无明显优势项，整体均衡';
           const weaks = Object.entries(det).filter(([k,v])=>v<50).map(([k,v])=>names[k]).join('、') || '暂无明显短板，建议重点考虑';
-          return `<div style="border-left:4px solid ${i===0?'var(--success)':(d.m.score>=60?'var(--primary)':'var(--warn)')};padding:10px 14px;background:#fff;margin-bottom:8px;border-radius:0 8px 8px 0;">
-            <h5 style="font-size:13.5px;margin-bottom:4px;">${i===0?'🏆 ':''}${d.r.communityName} · <span class="tag ${d.advice.color}">${d.advice.level}</span></h5>
-            <p style="font-size:12.5px;color:var(--text-2);margin:4px 0;"><strong>推荐理由：</strong>${d.advice.desc}</p>
-            <p style="font-size:12.5px;color:var(--success);margin:3px 0;"><strong>✅ 主要优势：</strong>${strengths}${d.r.pros?' · '+d.r.pros.slice(0,40):''}</p>
-            <p style="font-size:12.5px;color:var(--warn);margin:3px 0;"><strong>⚠️ 主要顾虑：</strong>${weaks}${d.r.cons?' · '+d.r.cons.slice(0,40):''}</p>
-            <p style="font-size:12px;color:var(--text-3);margin-top:4px;"><strong>下一步建议：</strong>${
+          return `<div style="border-left:4px solid ${i===0?'var(--success)':(d.m.score>=60?'var(--primary)':'var(--warn)')};padding:8px 14px;background:#fff;margin-bottom:8px;border-radius:0 8px 8px 0;">
+            <h5 style="font-size:13.5px;margin-bottom:2px;">${i===0?'🏆 ':''}${d.r.communityName} · <span class="tag ${d.advice.color}">${d.advice.level}</span></h5>
+            <p style="font-size:12.5px;color:var(--text-2);margin:2px 0;line-height:1.5;"><strong>推荐理由：</strong>${d.advice.desc}</p>
+            <p style="font-size:12.5px;color:var(--success);margin:2px 0;line-height:1.5;"><strong>✅ 主要优势：</strong>${strengths}${d.r.pros?' · '+d.r.pros.slice(0,40):''}</p>
+            <p style="font-size:12.5px;color:var(--warn);margin:2px 0;line-height:1.5;"><strong>⚠️ 主要顾虑：</strong>${weaks}${d.r.cons?' · '+d.r.cons.slice(0,40):''}</p>
+            <p style="font-size:12px;color:var(--text-3);margin:2px 0 0;line-height:1.5;"><strong>下一步建议：</strong>${
               i===0?'与中介确认房源最新动态+产权/学区情况，尽快安排复看并洽谈价格。':
               (d.m.score>=60?'保持关注，可与中介沟通议价空间，如首推房源不成交可作为Plan B备选。':'继续观望，除非价格大幅下降或有其他利好变化，否则不建议优先考虑。')
             }</p>

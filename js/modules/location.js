@@ -228,9 +228,11 @@ window.LocationMod = (function() {
       const poiType = input.dataset.poiType || '';
       const container = document.createElement('div');
       container.className = 'ac-dropdown';
-      container.style.cssText = 'position:absolute;z-index:9999;background:#fff;border:1px solid var(--border-light);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.12);max-height:240px;overflow-y:auto;display:none;min-width:240px;';
-      input.parentElement.style.position = input.parentElement.style.position || 'relative';
-      input.parentElement.appendChild(container);
+      container.style.cssText = 'position:absolute;left:0;top:100%;margin-top:2px;z-index:9999;background:#fff;border:1px solid var(--border-light);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,0.14);max-height:240px;overflow-y:auto;display:none;min-width:100%;width:max-content;max-width:360px;';
+      // 确保 input 的父级有 position:relative
+      const parent = input.parentElement;
+      parent.style.position = parent.style.position || 'relative';
+      parent.appendChild(container);
 
       let _timer = null;
       input.addEventListener('input', () => {
@@ -460,28 +462,55 @@ window.LocationMod = (function() {
             ${records.map(r=>`<option value="${r.id}">${r.communityName} · ${r.district||''}</option>`).join('')}
           </select>
         </div>
+        <div class="form-item full">
+          <label>或输入具体小区名查询周边配套距离</label>
+          <input type="text" id="s_comm" placeholder="如：百家湖花园 / 龙江银城花园" data-autocomplete data-poi-type="${POI_TYPES.community}">
+        </div>
       </div>
       <div style="margin-top:10px;"><button class="btn btn-primary" onclick="LocationMod.querySchool()">🔍 查询学区</button></div>
       <div id="s_result" style="margin-top:14px;"></div>
     </div>`;
   }
-  function querySchool() {
+  async function querySchool() {
     let dist = document.getElementById('s_dist').value;
     const recId = document.getElementById('s_rec').value;
+    const commInput = document.getElementById('s_comm').value.trim();
+    let commName = commInput;
     if (!dist && recId) {
       const r = Store.getRecord(recId);
-      if (r) dist = r.district;
+      if (r) { dist = r.district; commName = commName || r.communityName; }
     }
-    if (!dist) { Utils.toast('请选择板块或房源','warn'); return; }
-    const d = DISTRICT_DATA[dist];
-    if (!d) return;
+    if (!dist && !commName) { Utils.toast('请选择板块、房源或输入小区名','warn'); return; }
+    if (!dist && commName) {
+      // 尝试通过POI搜索推断区域
+      const srvKey = getAmapKey().srv;
+      if (srvKey) {
+        try {
+          const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(commName)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.status === '1' && data.pois && data.pois[0]) {
+            dist = (data.pois[0].adname||'').replace('区','').replace('县','');
+          }
+        } catch(e) {}
+      }
+      if (!dist) dist = '江宁'; // 兜底
+    }
+    const d = DISTRICT_DATA[dist] || DISTRICT_DATA['江宁'];
     // 模拟评级
     const rate = ['顶级','优秀','良好','较好','一般'][Math.min(4, ['鼓楼','玄武','建邺','秦淮','栖霞','雨花台','江宁','浦口','六合','溧水','高淳'].indexOf(dist))];
     const rateColor = ['顶级','优秀'].includes(rate)?'tag-success':(rate==='良好'?'tag-primary':'tag-warn');
+
+    // 如果有具体小区名，查询周边配套距离
+    let facilityDistHtml = '';
+    if (commName) {
+      facilityDistHtml = await fetchFacilityDistances(commName);
+    }
+
     document.getElementById('s_result').innerHTML = `
       <div style="background:#fff;border:1px solid var(--border-light);border-radius:10px;padding:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <h3 style="font-size:16px;">📍 ${dist} 学区概况</h3>
+          <h3 style="font-size:16px;">📍 ${dist} 学区概况${commName?` · ${commName}`:''}</h3>
           <span class="tag ${rateColor} tag-sm">学区评级：${rate}</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
@@ -509,6 +538,65 @@ window.LocationMod = (function() {
           <p style="font-size:12.5px;color:var(--text-2);">${d.industry}</p>
           <h4 style="font-size:13px;margin:10px 0 6px;">📈 房价基准 & 升值潜力</h4>
           <p style="font-size:12.5px;color:var(--text-2);">二手房挂牌基准价约 <strong style="color:var(--accent)">${d.basePrice.toLocaleString()}元/㎡</strong>，综合升值潜力评估：<strong class="tag tag-success tag-sm">${d.potential}</strong></p>
+        </div>
+        ${facilityDistHtml}
+      </div>
+    `;
+  }
+
+  // 查询小区到周边配套设施的距离
+  async function fetchFacilityDistances(commName) {
+    const srvKey = getAmapKey().srv;
+    if (!srvKey) return '<div style="margin-top:14px;padding:10px;background:var(--bg-2);border-radius:8px;font-size:12px;color:var(--text-3);">📌 配置高德API Key后可查询小区到周边配套设施的精确距离</div>';
+    // 先获取小区坐标
+    let commLoc = null;
+    try {
+      const geoUrl = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(commName)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+      const geoRes = await fetch(geoUrl);
+      const geoData = await geoRes.json();
+      if (geoData.status === '1' && geoData.pois && geoData.pois[0] && geoData.pois[0].location) {
+        commLoc = geoData.pois[0].location;
+      }
+    } catch(e) {}
+    if (!commLoc) return '';
+    // 搜索周边各类配套
+    const facilityTypes = [
+      { label:'🏫 最近学校', type:'141200|141205', icon:'🏫' },
+      { label:'🏥 最近医院', type:'090100', icon:'🏥' },
+      { label:'🛍️ 最近商场', type:'060100', icon:'🛍️' },
+      { label:'🚇 最近地铁站', type:'150500', icon:'🚇' },
+      { label:'🌳 最近公园', type:'110101', icon:'🌳' },
+    ];
+    const results = await Promise.all(facilityTypes.map(async ft => {
+      try {
+        const url = `https://restapi.amap.com/v3/place/around?key=${encodeURIComponent(srvKey)}&location=${encodeURIComponent(commLoc)}&types=${encodeURIComponent(ft.type)}&radius=5000&offset=1&sortrule=distance`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.status === '1' && data.pois && data.pois[0]) {
+          const poi = data.pois[0];
+          const dist = poi.distance ? Number(poi.distance) : 0;
+          const walkMin = Math.ceil(dist / 80); // 步行约80m/min
+          return { ...ft, name: poi.name, dist, walkMin };
+        }
+      } catch(e) {}
+      return null;
+    }));
+    const valid = results.filter(Boolean);
+    if (!valid.length) return '';
+    return `
+      <div style="margin-top:14px;padding:12px;background:var(--bg-2);border-radius:8px;">
+        <h4 style="font-size:13px;color:var(--text-1);margin-bottom:8px;">📏 ${commName} 周边配套距离</h4>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
+          ${valid.map(r => `
+            <div style="padding:8px 10px;background:#fff;border-radius:6px;border:1px solid var(--border-light);">
+              <div style="font-size:12px;color:var(--text-3);">${r.label}</div>
+              <div style="font-size:13px;font-weight:600;color:var(--text-1);margin:2px 0;">${r.name}</div>
+              <div style="font-size:11.5px;color:var(--text-3);">
+                <span style="color:var(--primary);font-weight:600;">${r.dist < 1000 ? r.dist+'m' : (r.dist/1000).toFixed(1)+'km'}</span>
+                · 步行约${r.walkMin}分钟
+              </div>
+            </div>
+          `).join('')}
         </div>
       </div>
     `;

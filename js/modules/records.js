@@ -52,7 +52,7 @@ window.RecordsMod = (function() {
         <button class="btn btn-ghost btn-sm" onclick="RecordsMod.clearFilter()">重置</button>
       </div>
 
-      <div class="card" style="padding:0;">
+      <div style="margin-top:4px;">
         ${list.length === 0 ? `
           <div class="empty-state">
             <div class="icon">📭</div>
@@ -315,6 +315,46 @@ window.RecordsMod = (function() {
       isFiveYearUnique: d.isFiveYearUnique==null?'':String(d.isFiveYearUnique),
     });
     Utils.bindStars(form);
+    bindCommunityAutoDistrict(form);
+  }
+
+  // 输入小区名后自动识别区域
+  function bindCommunityAutoDistrict(form) {
+    const nameInput = form.querySelector('[data-field="communityName"]');
+    const distSelect = form.querySelector('[data-field="district"]');
+    if (!nameInput || !distSelect) return;
+    let _timer = null;
+    nameInput.addEventListener('input', () => {
+      clearTimeout(_timer);
+      _timer = setTimeout(() => autoDetectDistrict(nameInput.value.trim(), distSelect), 500);
+    });
+    nameInput.addEventListener('blur', () => {
+      clearTimeout(_timer);
+      autoDetectDistrict(nameInput.value.trim(), distSelect);
+    });
+  }
+  async function autoDetectDistrict(name, distSelect) {
+    if (!name || name.length < 2) return;
+    if (distSelect.value) return; // 已手动选过则不覆盖
+    const srvKey = (localStorage.getItem('k_amap_srv')||'').trim();
+    if (!srvKey) return; // 无Key无法识别
+    try {
+      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(name)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.status === '1' && data.pois && data.pois[0]) {
+        const poi = data.pois[0];
+        const district = (poi.adname||'').replace('区','').replace('县','');
+        if (district) {
+          const opts = [...distSelect.options];
+          const match = opts.find(o => o.value === district || o.text === district);
+          if (match) {
+            distSelect.value = match.value;
+            Utils.toast(`已自动识别区域：${district}`, 'info', 1500);
+          }
+        }
+      }
+    } catch(e) { /* 静默失败 */ }
   }
 
   function autoPrice() {
