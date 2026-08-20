@@ -63,14 +63,19 @@ window.SettingsMod = (function() {
             <button class="btn btn-success btn-sm" onclick="CalendarMod.checkReminders();Utils.toast('已检查待看计划','success')">立即检查提醒</button>
           </div>
           <div style="margin-top:14px;">
-            <div class="form-section-title" style="margin:0 0 10px;">🌐 联网API配置（可选，未配置时使用本地模拟数据）</div>
+              <div class="form-section-title" style="margin:0 0 10px;">🌐 联网API配置（可选，未配置时使用本地模拟数据）</div>
             <div class="form-grid">
               <div class="form-item full"><label>高德地图 Web端 JS Key</label>
-                <input type="text" id="k_amap_js" placeholder="申请地址：console.amap.com" value="${localStorage.getItem('k_amap_js')||''}">
+                <div style="display:flex;gap:8px;">
+                  <input type="text" id="k_amap_js" placeholder="申请地址：console.amap.com" value="${localStorage.getItem('k_amap_js')||''}" style="flex:1;">
+                  <button class="btn btn-accent btn-sm" onclick="SettingsMod.testAmapJS()">测试</button>
+                </div>
               </div>
               <div class="form-item full"><label>高德地图 Web服务 Key（通勤/距离计算）</label>
-                <input type="text" id="k_amap_srv" placeholder="同控制台，创建Web服务类型Key" value="${localStorage.getItem('k_amap_srv')||''}">
-              </div>
+                <div style="display:flex;gap:8px;">
+                  <input type="text" id="k_amap_srv" placeholder="同控制台，创建Web服务类型Key" value="${localStorage.getItem('k_amap_srv')||''}" style="flex:1;">
+                  <button class="btn btn-ghost btn-sm" onclick="SettingsMod.testAmapSrv()">测试</button>
+                </div>
               <div class="form-item full"><label>AI大模型 / TRAE API 配置（预留）</label>
                 <input type="text" id="k_ai" placeholder="自定义AI分析接口" value="${localStorage.getItem('k_ai')||''}">
               </div>
@@ -130,6 +135,48 @@ window.SettingsMod = (function() {
     localStorage.removeItem('k_beike_token');
     localStorage.removeItem('k_beike_token_exp');
     Utils.toast('已保存API Key','success');
+  }
+
+  async function testAmapJS() {
+    const key = document.getElementById('k_amap_js').value.trim();
+    if (!key) { Utils.toast('请先填写 JS Key','warn'); return; }
+    localStorage.setItem('k_amap_js', key);
+    Utils.toast('正在测试 JS Key...','info');
+    const s = document.createElement('script');
+    s.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}&callback=__amapTestCb`;
+    window.__amapTestCb = function() {
+      if (window.AMap) {
+        Utils.toast('✅ JS Key 有效，地图可正常加载','success');
+      } else {
+        Utils.toast('❌ JS Key 加载失败','danger');
+      }
+      s.remove();
+      try { delete window.__amapTestCb; } catch(e) {}
+    };
+    s.onerror = () => {
+      Utils.toast('❌ JS Key 无效或网络错误，请检查 Key 类型和域名白名单','danger');
+      s.remove();
+      try { delete window.__amapTestCb; } catch(e) {}
+    };
+    document.head.appendChild(s);
+  }
+
+  async function testAmapSrv() {
+    const key = document.getElementById('k_amap_srv').value.trim();
+    if (!key) { Utils.toast('请先填写 Web服务 Key','warn'); return; }
+    localStorage.setItem('k_amap_srv', key);
+    Utils.toast('正在测试 Web服务 Key...','info');
+    try {
+      const res = await fetch(`https://restapi.amap.com/v3/geocode/geo?key=${encodeURIComponent(key)}&address=南京新街口`);
+      const data = await res.json();
+      if (data.status === '1' && data.geocodes && data.geocodes[0]) {
+        Utils.toast('✅ Web服务 Key 有效，地理编码正常','success');
+      } else {
+        Utils.toast('❌ ' + (data.info || 'Key无效'), 'danger');
+      }
+    } catch(e) {
+      Utils.toast('❌ 网络错误：' + (e.message||e), 'danger');
+    }
   }
 
   async function testBeike() {
@@ -211,5 +258,5 @@ window.SettingsMod = (function() {
         <button class="btn btn-primary" onclick="Store.clearAll();Store.seedDemoIfEmpty();Utils.closeModal();location.reload();">确认载入</button>`});
   }
 
-  return { render, saveNotify, saveKeys, testBeike, importFile, doImport, exportCSVPlan, resetAll, doReset, seedDemo };
+  return { render, saveNotify, saveKeys, testAmapJS, testAmapSrv, testBeike, importFile, doImport, exportCSVPlan, resetAll, doReset, seedDemo };
 })();

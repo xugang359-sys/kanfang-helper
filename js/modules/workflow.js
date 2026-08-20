@@ -62,10 +62,8 @@ window.WorkflowMod = (function() {
           </div>
         </div>
 
-      </div>
-
-      <div class="card">
-        <div class="card-title">📋 全步骤备注看板</div>
+        <div class="card">
+          <div class="card-title">📋 全步骤备注看板</div>
         ${wf.steps.map((s,i)=>`
           <div style="padding:8px 0;border-bottom:1px dashed var(--border-light);">
             <div style="display:flex;gap:8px;align-items:center;">
@@ -74,6 +72,7 @@ window.WorkflowMod = (function() {
               <div style="flex:1;font-size:12.5px;color:var(--text-2);">${wf.stepNotes[i] || '<span style="color:var(--text-4);">（未填写备注）</span>'}</div>
             </div>
           </div>`).join('')}
+        </div>
       </div>
     `;
     App.setContent(html);

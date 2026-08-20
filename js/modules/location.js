@@ -320,15 +320,11 @@ window.LocationMod = (function() {
         <div style="text-align:right;margin-top:10px;">
           <button class="btn btn-primary" onclick="LocationMod.calcCommute()">🔍 分析通勤</button>
         </div>
-        <div class="callout" style="margin-top:12px;">
-          <div class="callout-title">🌐 技术说明</div>
-          <p style="font-size:12px;">生产环境可接入<strong>高德地图Web服务API</strong>（direction/driving、direction/transit），输入两地地址即可获取精确的驾车/地铁通勤时长与距离。免费额度为每日30万次调用，个人使用完全够用。本模块已预留接口，申请Key填入设置即可使用。</p>
-        </div>
       </div>
       <div id="c_result" class="card">
         <div class="empty-state" style="padding:20px;"><div class="icon">🚗</div>
           <h4>点击"分析通勤"查看结果</h4>
-          <p>基于南京各板块到市中心/各CBD的平均通勤数据进行模拟分析，结果仅供参考。</p></div>
+        </div>
       </div>
     </div>`;
   }
@@ -661,10 +657,6 @@ window.LocationMod = (function() {
       </p>
       <button class="btn btn-primary btn-sm" onclick="LocationMod.showFacility()">🗺️ 显示配套</button>
       <div id="f_result" style="margin-top:14px;"></div>
-      <div class="callout warn" style="margin-top:14px;">
-        <div class="callout-title">🌐 真实地图实现方案</div>
-        <p style="font-size:12px;"><strong>高德/百度地图 JS API：</strong>申请Web端Key，加载地图 → 按小区名 Geocoding → 调用 place/search?keywords=地铁站 并按半径检索 → 展示Marker与步行距离。API免费额度可充分满足个人使用。"周边配套地图"占位页面后续可无缝接入真实地图组件。</p>
-      </div>
     </div>`;
   }
   async function showFacility() {
@@ -675,8 +667,7 @@ window.LocationMod = (function() {
     document.getElementById('f_result').innerHTML = `
       <div class="empty-state" style="padding:30px;">
         <div style="font-size:24px;">${useReal?'🌐':'🏥'}</div>
-        <h4>${useReal?'正在调用高德API搜索周边POI...':'加载中...'}</h4>
-        <p style="font-size:12.5px;color:var(--text-3);">${useReal?'真实数据来源：高德地点搜索API':'本地模拟数据'}</p>
+        <h4>${useReal?'正在搜索周边配套...':'加载中...'}</h4>
       </div>`;
 
     let data = [];
@@ -788,7 +779,6 @@ window.LocationMod = (function() {
     const html = `
       <div class="card">
         <div class="card-title">📏 距离测算（小区 → 任意目标）</div>
-        <p style="font-size:12.5px;color:var(--text-3);margin-bottom:12px;">输入小区名和目标地点（商场/医院/学校/地铁站等），自动调用高德API计算真实驾车/步行距离与时间。支持从下拉列表快速选择已记录的房源作为起点。</p>
         <div class="form-grid">
           <div class="form-item full"><label>起点（小区）</label>
             <input type="text" id="d_from" placeholder="如：百家湖花园 / 龙江银城花园" data-autocomplete data-poi-type="${POI_TYPES.community}">
@@ -843,7 +833,7 @@ window.LocationMod = (function() {
     const resultBox = document.getElementById('d_result');
 
     resultBox.innerHTML = `<div class="empty-state" style="padding:30px;"><div style="font-size:24px;">${useReal?'🌐':'📏'}</div>
-      <h4>${useReal?'正在调用高德API计算路径...':'计算中...'}</h4>
+      <h4>${useReal?'正在计算路径...':'计算中...'}</h4>
       <p style="font-size:12.5px;color:var(--text-3);">${from} → ${to}（${mode==='driving'?'驾车':mode==='walking'?'步行':mode==='transit'?'公交':mode==='bicycling'?'骑行':'-'}）</p></div>`;
 
     if (!useReal) {
@@ -859,7 +849,7 @@ window.LocationMod = (function() {
             <div><strong style="font-size:18px;">${walkTime}</strong> 分钟<br/><span style="opacity:0.85;">步行估算</span></div>
           </div>
         </div>
-        <p style="margin-top:10px;font-size:11.5px;color:var(--text-3);">⚠️ 未配置高德API Key，仅返回粗略估算。配置 Key 后可获取真实路径距离。</p>
+        <p style="margin-top:10px;font-size:11.5px;color:var(--text-3);">⚠️ 未配置高德 Key，仅返回粗略估算。</p>
         <button class="btn btn-accent btn-sm" style="margin-top:8px;" onclick="App.navigate('settings')">去配置高德Key</button>
       `;
       return;
@@ -913,7 +903,7 @@ window.LocationMod = (function() {
     const speed = mode==='driving'?35:mode==='walking'?5:mode==='transit'?20:mode==='bicycling'?15:20;
     resultBox.innerHTML = `
       <div style="padding:16px;background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;border-radius:10px;">
-        <div style="font-size:11.5px;opacity:0.9;">🌐 高德API实时数据 · ${modeLabel}</div>
+        <div style="font-size:11.5px;opacity:0.9;">${modeLabel}</div>
         <h4 style="font-size:15px;margin:6px 0;">${from} → ${to}</h4>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:12px;">
           <div><strong style="font-size:22px;">${result.distance}</strong><span style="font-size:12px;opacity:0.85;"> km</span><br/><span style="opacity:0.85;font-size:11.5px;">路径距离</span></div>
@@ -926,7 +916,6 @@ window.LocationMod = (function() {
         <span class="tag tag-success tag-sm">⚡ 平均时速 ${Math.round(Number(result.distance)/(result.duration/60))} km/h</span>
         ${Number(result.distance)<2?'<span class="tag tag-success tag-sm">✅ 步行可达</span>':Number(result.distance)<5?'<span class="tag tag-primary tag-sm">🚴 骑行友好</span>':'<span class="tag tag-warn tag-sm">🚗 建议驾车</span>'}
       </div>
-      <p style="margin-top:10px;font-size:11.5px;color:var(--text-3);">🌐 数据来源：高德路径规划API（${modeLabel}模式）</p>
       <div id="distMap" style="margin-top:14px;height:420px;border-radius:10px;border:1px solid var(--border-light);background:#f2f4f8;overflow:hidden;position:relative;">
         <div id="distMapLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;pointer-events:none;">🗺️ 正在加载路径地图…</div>
       </div>

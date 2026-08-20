@@ -5,19 +5,18 @@ window.App = (function() {
   let curView = 'dashboard';
 
   const VIEW_MAP = {
-    dashboard:    {mod: 'DashboardMod',  label: '🏠 首页'},
-    records:      {mod: 'RecordsMod',    label: '📋 房源记录中心'},
-    expectation:  {mod: 'ExpectationMod',label: '🎯 购房期望档案'},
-    calendar:     {mod: 'CalendarMod',   label: '📅 看房日程表'},
-    recommend:    {mod: 'RecommendMod',  label: '🔍 房源推荐推送'},
-    compare:      {mod: 'CompareMod',    label: '⚖️ 智能决策对比'},
-    finance:      {mod: 'FinanceMod',    label: '💰 财务计算工具'},
-    location:     {mod: 'LocationMod',   label: '🗺️ 区位分析工具'},
-    aids:         {mod: 'AidsMod',       label: '🛠️ 实地检查清单'},
-    workflow:     {mod: 'WorkflowMod',   label: '🚀 购房进度追踪'},
+    dashboard:    {mod: 'DashboardMod',  label: '🏠 看房画像'},
+    expectation:  {mod: 'ExpectationMod',label: '🎯 期望档案'},
+    calendar:     {mod: 'CalendarMod',   label: '📅 看房日程'},
+    records:      {mod: 'RecordsMod',    label: '📋 房源记录'},
+    recommend:    {mod: 'RecommendMod',  label: '🔍 房源推荐'},
+    compare:      {mod: 'CompareMod',    label: '⚖️ 决策对比'},
     report:       {mod: 'ReportMod',    label: '📄 看房报告'},
+    workflow:     {mod: 'WorkflowMod',   label: '🚀 购房进度追踪'},
+    aids:         {mod: 'AidsMod',       label: '🛠️ 实地检查清单'},
+    finance:      {mod: 'FinanceMod',    label: '🧰 看房助手'},
+    location:     {mod: 'LocationMod',   label: '🗺️ 区位分析'},
     settings:     {mod: 'SettingsMod',   label: '⚙️ 系统设置'},
-    more:         {mod: 'SettingsMod',   label: '☰ 更多'},
   };
 
   // 移动端Tabbar映射
@@ -25,7 +24,7 @@ window.App = (function() {
     dashboard: 'dashboard',
     records: 'records',
     calendar: 'calendar',
-    tools: 'finance',
+    finance: 'finance',
     more: 'settings',
   };
 

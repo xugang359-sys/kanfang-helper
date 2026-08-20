@@ -17,7 +17,6 @@ window.ReportMod = (function() {
         </div>
         <div class="page-actions">
           <button class="btn btn-primary btn-sm" onclick="ReportMod.exportWord()">📝 导出 Word</button>
-          <button class="btn btn-accent btn-sm" onclick="ReportMod.exportHTML()">🌐 导出网页</button>
         </div>
       </div>
 
