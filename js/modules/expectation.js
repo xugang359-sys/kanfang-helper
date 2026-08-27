@@ -2,6 +2,7 @@
    M2 购房期望档案模块
    ============================================ */
 window.ExpectationMod = (function() {
+  const ic = Utils.icon;   // SF Symbols 风格图标
   const MUST_HAVES_OPTIONS = ['必须有电梯','必须南北通透','必须近地铁','必须有学区','不接受顶楼和一楼','必须人车分流','必须满五唯一'];
   const TARGET_DATE_OPTIONS = ['1个月内','3个月内','半年内','1年内','1年以上'];
 
@@ -10,17 +11,17 @@ window.ExpectationMod = (function() {
     const html = `
       <div class="page-header">
         <div>
-          <h2><span class="emoji">🎯</span>购房期望档案</h2>
+          <h2><span class="emoji">${ic('target')}</span>购房期望档案</h2>
           <p class="page-desc">定义购房标准，作为房源筛选、推荐和对比的基准线。修改后所有模块自动联动更新。</p>
         </div>
         <div class="page-actions">
           <button class="btn btn-ghost btn-sm" onclick="ExpectationMod.resetDefault()">恢复默认</button>
-          <button class="btn btn-primary btn-sm" onclick="ExpectationMod.save()">💾 保存档案</button>
+          <button class="btn btn-primary btn-sm" onclick="ExpectationMod.save()">${ic('check',15)} 保存档案</button>
         </div>
       </div>
 
       <div class="card" id="expForm">
-        <div class="card-title">💰 预算与财务</div>
+        <div class="card-title">${ic('wallet')} 预算与财务</div>
         <div class="form-grid">
           <div class="form-item">
             <label>总价预算范围（万元）</label>
@@ -57,7 +58,7 @@ window.ExpectationMod = (function() {
           </div>
         </div>
 
-        <div class="form-section-title">🏠 房型与面积</div>
+        <div class="form-section-title">${ic('house')} 房型与面积</div>
         <div class="form-grid-4">
           <div class="form-item">
             <label>房型：室</label>
@@ -87,20 +88,20 @@ window.ExpectationMod = (function() {
           </div>
         </div>
 
-        <div class="form-section-title">✅ 硬性要求（多选）</div>
+        <div class="form-section-title">${ic('check')} 硬性要求（多选）</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;" id="mustHavesBox">
           ${MUST_HAVES_OPTIONS.map(v=>`<label style="display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
             <input type="checkbox" data-checkbox="mustHaves" value="${v}"> <span>${v}</span></label>`).join('')}
         </div>
 
-        <div class="form-section-title">📍 区域与通勤</div>
+        <div class="form-section-title">${ic('pin')} 区域与通勤</div>
         <div class="form-grid">
           <div class="form-item full">
-            <label>意向区域（可多选，按优先级排列）</label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;" id="districtsBox">
-              ${Store.DISTRICTS.map(d=>`<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
-                <input type="checkbox" data-checkbox="preferredDistricts" value="${d}"> <span>${d}</span></label>`).join('')}
+            <label>意向区域（先选城市，再勾选该城市的区域；支持添加多个城市的多个区域）</label>
+            <div id="areasBox">
+              ${areaGroupHTML(exp.preferredAreas)}
             </div>
+            <a style="color:var(--primary);cursor:pointer;font-size:12.5px;align-self:flex-start;margin-top:8px;" onclick="ExpectationMod.addCityArea()">＋ 添加城市</a>
           </div>
           <div class="form-item">
             <label>工作地点</label>
@@ -116,7 +117,7 @@ window.ExpectationMod = (function() {
           </div>
         </div>
 
-        <div class="form-section-title">📅 时间与装修</div>
+        <div class="form-section-title">${ic('calendar')} 时间与装修</div>
         <div class="form-grid">
           <div class="form-item">
             <label>预计购房时间</label>
@@ -138,7 +139,7 @@ window.ExpectationMod = (function() {
           </div>
         </div>
 
-        <div class="form-section-title">⚖️ 智能评分权重（总和建议100）</div>
+        <div class="form-section-title">${ic('scale')} 智能评分权重（总和必须为 100%）</div>
         <div id="weightsBox">
           <div class="weight-row">
             <div class="w-label">预算匹配</div>
@@ -181,7 +182,6 @@ window.ExpectationMod = (function() {
       ...exp, needLoan: exp.needLoan ? 'true' : 'false'
     });
     Utils.fillCheckboxes(document.getElementById('mustHavesBox'), 'mustHaves', exp.mustHaves || []);
-    Utils.fillCheckboxes(document.getElementById('districtsBox'), 'preferredDistricts', exp.preferredDistricts || []);
 
     // 权重滑块联动
     document.querySelectorAll('#weightsBox input[type="range"]').forEach(r => {
@@ -201,6 +201,68 @@ window.ExpectationMod = (function() {
     document.getElementById('weightSum').textContent = sum;
   }
 
+  // ===== 多城市多区域（意向区域） =====
+  function areaGroupHTML(areas) {
+    const list = (areas && areas.length) ? areas : [{ city: Store.getDefaultCity(), districts: [] }];
+    return list.map(a => `
+      <div class="area-group" style="border:1px solid var(--border-light);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg-2);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <div class="cascade-group" style="display:flex;gap:6px;">${Store.cityCascadeHTML(a.city, 'area', { onCity: 'ExpectationMod.onCityChange(this)' })}</div>
+          <span style="font-size:12px;color:var(--text-3);">区域（可多选）</span>
+          <a class="area-toggle-all" style="margin-left:auto;color:var(--primary);cursor:pointer;font-size:12px;" onclick="ExpectationMod.toggleAllAreas(this)">${ic('check',12)} 全选区域</a>
+          <a style="color:var(--danger);cursor:pointer;font-size:12px;margin-left:10px;" onclick="ExpectationMod.removeCityArea(this)">${ic('x',12)} 移除该城市</a>
+        </div>
+        <div class="area-districts" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;">
+          ${(Store.CITIES[a.city]||[]).map(d=>`
+            <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+              <input type="checkbox" value="${d}" data-areadist="${d}" ${(a.districts||[]).includes(d)?'checked':''}> <span>${d}</span>
+            </label>`).join('')}
+        </div>
+      </div>`).join('');
+  }
+  // 切换城市 → 重绘该组的区域选项
+  function onCityChange(sel) {
+    const city = sel.value;
+    const group = sel.closest('.area-group');
+    const box = group.querySelector('.area-districts');
+    box.innerHTML = (Store.CITIES[city]||[]).map(d=>`
+      <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">
+        <input type="checkbox" value="${d}" data-areadist="${d}"> <span>${d}</span>
+      </label>`).join('');
+    const toggle = group.querySelector('.area-toggle-all');
+    if (toggle) toggle.innerHTML = `${ic('check',12)} 全选区域`;
+  }
+  // 全选 / 取消全选当前城市下的全部区域
+  function toggleAllAreas(link) {
+    const group = link.closest('.area-group');
+    const boxes = [...group.querySelectorAll('input[data-areadist]')];
+    const allOn = boxes.length > 0 && boxes.every(b => b.checked);
+    boxes.forEach(b => b.checked = !allOn);
+    link.innerHTML = allOn ? `${ic('check',12)} 全选区域` : `${ic('check',12)} 取消全选`;
+  }
+  function addCityArea() {
+    const box = document.getElementById('areasBox');
+    const tmp = document.createElement('div');
+    tmp.innerHTML = areaGroupHTML([{ city: Store.getDefaultCity(), districts: [] }]);
+    box.appendChild(tmp.firstElementChild);
+  }
+  function removeCityArea(el) {
+    el.closest('.area-group').remove();
+  }
+  // 全局城市切换联动：仍停留在原全局城市的意向区域组，跟随切换为新城市（手动添加的其他城市保持不变）
+  function onGlobalCityChange(city, oldCity) {
+    const box = document.getElementById('areasBox');
+    if (!box || !Store.CITIES[city]) return;
+    box.querySelectorAll('.area-group').forEach(g => {
+      const citySel = g.querySelector('.area-city');
+      if (!citySel || citySel.value !== oldCity) return;
+      const ds = [...g.querySelectorAll('input[data-areadist]:checked')].map(i => i.value);
+      const fresh = document.createElement('div');
+      fresh.innerHTML = areaGroupHTML([{ city, districts: ds }]);
+      g.replaceWith(fresh.firstElementChild);
+    });
+  }
+
   function save() {
     const form = document.getElementById('expForm');
     const data = Utils.collectForm(form);
@@ -212,8 +274,30 @@ window.ExpectationMod = (function() {
         bathrooms: Number(data.roomsNeeded.bathrooms)||1,
       };
     }
+    // 权重 range 输入为字符串，统一转数字，避免匹配度总分拼接错误
+    if (data.weights) {
+      ['budget','layout','commute','facility','impression','potential'].forEach(k => {
+        if (data.weights[k] != null) data.weights[k] = Number(data.weights[k]) || 0;
+      });
+    }
+    // 智能评分权重总和必须为 100%，否则提示并中止保存
+    const weightSum = data.weights ? Object.values(data.weights).reduce((s, v) => s + (Number(v) || 0), 0) : 100;
+    if (weightSum !== 100) {
+      Utils.toast(`智能评分权重总和必须为 100%（当前 ${weightSum}%），请调整后保存`, 'warn');
+      const box = document.getElementById('weightsBox');
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     data.mustHaves = Utils.collectCheckboxes(form, 'mustHaves');
-    data.preferredDistricts = Utils.collectCheckboxes(form, 'preferredDistricts');
+    // 多城市多区域：收集每个城市组的勾选区域
+    const areas = [];
+    document.querySelectorAll('#areasBox .area-group').forEach(g => {
+      const city = g.querySelector('.area-city').value;
+      const ds = [...g.querySelectorAll('input[data-areadist]:checked')].map(i => i.value);
+      if (city) areas.push({ city, districts: ds });   // 未选区域也保留，视为全城意向
+    });
+    data.preferredAreas = areas;
+    delete data.preferredDistricts;
     Store.saveExpectation(data);
     Utils.toast('购房期望档案已保存', 'success');
   }
@@ -234,5 +318,5 @@ window.ExpectationMod = (function() {
     Utils.toast('已恢复默认期望档案', 'success');
   }
 
-  return { render, save, resetDefault, doReset };
+  return { render, save, resetDefault, doReset, addCityArea, removeCityArea, onCityChange, onGlobalCityChange, toggleAllAreas };
 })();

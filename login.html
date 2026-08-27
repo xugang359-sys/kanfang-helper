@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#F5F5F7">
+<title>优宅邦 NestWise · 登录 / 注册</title>
+<meta name="description" content="优宅邦 NestWise · 专业购房决策门户 · 登录后使用">
+<link rel="stylesheet" href="css/auth.css?v=20260827d">
+</head>
+<body>
+<div class="auth-bg" aria-hidden="true"></div>
+
+<div class="auth-wrap">
+  <!-- 左栏：登录 / 注册 -->
+  <main class="auth-main">
+  <!-- 品牌区 -->
+  <div class="auth-brand">
+    <div class="auth-logo" aria-label="优宅邦 Logo">
+      <svg width="34" height="34" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path stroke="#FFFFFF" stroke-width="2.6" d="M3 10.5 L16 2 L29 10.5"/>
+        <path stroke="#FFFFFF" stroke-width="3.0" d="M8 12 L8 28"/>
+        <path stroke="#FFFFFF" stroke-width="3.0" d="M8 12 L20 28"/>
+        <path stroke="#FFFFFF" stroke-width="3.0" d="M20 12 L20 28"/>
+      </svg>
+    </div>
+    <div class="auth-brand-name">优宅邦<em>NestWise</em></div>
+  </div>
+
+  <!-- 标题区（随登录/注册切换） -->
+  <h1 class="auth-title" id="authTitle">欢迎回来</h1>
+  <p class="auth-sub" id="authSub">登录后继续你的购房决策</p>
+
+  <div class="auth-card">
+    <div class="auth-tabs" id="authTabs">
+      <button type="button" class="auth-tab on" data-mode="login">登录</button>
+      <button type="button" class="auth-tab" data-mode="register">注册</button>
+    </div>
+
+    <form id="authForm" novalidate>
+      <div class="a-field" id="nameField" style="display:none;">
+        <label for="aName">昵称</label>
+        <input type="text" id="aName" placeholder="怎么称呼你？" autocomplete="nickname">
+      </div>
+      <div class="a-field" id="cityField" style="display:none;">
+        <label for="cityInput">目前所在城市</label>
+        <div class="city-autocomplete" id="cityAuto">
+          <input type="text" id="cityInput" class="city-input" placeholder="输入城市名搜索，如：南京" autocomplete="off" spellcheck="false">
+          <svg class="city-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <button type="button" class="city-input-clear" id="cityInputClear" hidden aria-label="清除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div class="city-pop" id="cityPop" role="listbox"></div>
+        </div>
+        <select id="aCity" autocomplete="off" style="display:none;"></select>
+      </div>
+      <div class="a-field">
+        <label for="aEmail">邮箱</label>
+        <input type="email" id="aEmail" placeholder="请输入邮箱信息" autocomplete="email" spellcheck="false">
+      </div>
+      <div class="a-field">
+        <label for="aPass">密码</label>
+        <div class="a-pass-wrap">
+          <input type="password" id="aPass" placeholder="至少 6 位" autocomplete="current-password">
+          <button type="button" class="a-pass-toggle" id="aPassToggle" aria-label="显示密码" aria-pressed="false">
+            <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="a-err" id="aErr"></div>
+      <button type="submit" class="a-submit" id="aSubmit">登录</button>
+      <div class="a-terms">
+        <label class="a-check">
+          <input type="checkbox" id="aTerms">
+          <span class="a-check-box" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </span>
+          <span class="a-terms-text">我已阅读并同意 <a href="terms.html" target="_blank" rel="noopener">《服务条款》</a> 和 <a href="privacy.html" target="_blank" rel="noopener">《隐私政策》</a></span>
+        </label>
+      </div>
+    </form>
+
+    <p class="a-foot" id="aFoot">还没有账号？<a id="aSwitch" data-go="register">立即注册</a></p>
+  </div>
+
+  <!-- 注册福利提示 -->
+  <p class="auth-quota">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 11-13h-7l1-7Z"/></svg>
+    新用户注册即送 <b>20 次</b> AI 智能对话额度
+  </p>
+  </main>
+
+  <!-- 右栏：品牌介绍 -->
+  <aside class="auth-intro" aria-label="关于优宅邦">
+    <div class="ai-intro-inner">
+      <p class="ai-eyebrow">优宅邦 NestWise</p>
+      <h2 class="ai-title">让每一次购房决策，<br>都更有底气</h2>
+      <p class="ai-lead">AI 购房助手 × 六维匹配度 × 全周期管理 —— 一站式专业购房决策平台，助你高效、理性地完成置业大事。</p>
+      <ul class="ai-points">
+        <li>
+          <span class="ai-p-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M8 9h8M8 13h5"/></svg></span>
+          <span><b>AI 购房助手「贾维斯」</b><i>专属购房管家，随时解答你的决策疑问</i></span>
+        </li>
+        <li>
+          <span class="ai-p-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 20 5.5 17 14 12 22 7 14 4 5.5Z"/><path d="m4 5.5 8 3 8-3"/></svg></span>
+          <span><b>六维匹配度科学评估</b><i>预算 · 户型 · 通勤 · 配套 · 印象 · 潜力</i></span>
+        </li>
+        <li>
+          <span class="ai-p-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7v14h6V7L6 3Z"/><path d="M16 3l4 4v14h-6V7l2-4Z"/></svg></span>
+          <span><b>决策对比与全周期管理</b><i>看房记录 · 三套同台对比 · 进度追踪</i></span>
+        </li>
+        <li>
+          <span class="ai-p-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
+          <span><b>15 城购房政策一站查</b><i>限购 · 贷款 · 补贴，本地化精准指引</i></span>
+        </li>
+      </ul>
+      <div class="ai-stats">
+        <div class="ai-stat"><b>9</b><span>步购房流程</span></div>
+        <div class="ai-stat"><b>15</b><span>城政策覆盖</span></div>
+        <div class="ai-stat"><b>6</b><span>维匹配评估</span></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="js/store.js?v=20260901"></script>
+<script src="js/modules/auth.js?v=20260828d"></script>
+<script src="js/modules/sync.js?v=20260828d"></script>
+<script src="js/auth-page.js?v=20260827e"></script>
+</body>
+</html>

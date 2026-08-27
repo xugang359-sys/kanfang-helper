@@ -2,6 +2,7 @@
    M11 流程追踪与导出模块
    ============================================ */
 window.WorkflowMod = (function() {
+  const ic = Utils.icon;   // SF Symbols 风格图标
   const STEP_GUIDES = [
     { title: '需求确认', tips: '确定预算、房型、区域等硬性要求。建议将期望档案填写完整，并与家人沟通达成一致。', materials: ['购房预算表','家庭成员沟通记录','意向区域清单'] },
     { title: '线上筛选', tips: '在贝壳/链家/安居客等平台筛选房源，对比价格、户型、区位，收藏心仪房源并联系中介。', materials: ['各平台账号','收藏清单','中介联系方式'] },
@@ -20,13 +21,13 @@ window.WorkflowMod = (function() {
     const html = `
       <div class="page-header">
         <div>
-          <h2><span class="emoji">🚀</span>购房进度追踪</h2>
+          <h2><span class="emoji">${ic('rocket')}</span>购房进度追踪</h2>
           <p class="page-desc">9步购房流程进度追踪 · 完成后可在「看房报告」生成总结报告</p>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">🧭 购房全流程追踪</div>
+        <div class="card-title">${ic('compass')} 购房全流程追踪</div>
         <div class="workflow-steps">
           ${wf.steps.map((s,i)=>`
             <div class="wf-step ${i<curStep?'done':(i===curStep?'current':'')}" onclick="WorkflowMod.jumpTo(${i})" style="cursor:pointer;">
@@ -36,8 +37,8 @@ window.WorkflowMod = (function() {
         </div>
 
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;">
-          <button class="btn btn-ghost btn-sm" onclick="WorkflowMod.prev()">← 上一步</button>
-          <button class="btn btn-primary btn-sm" onclick="WorkflowMod.next()">下一步 →</button>
+          <button class="btn btn-ghost btn-sm" onclick="WorkflowMod.prev()">${ic('arrowLeft',13)} 上一步</button>
+          <button class="btn btn-primary btn-sm" onclick="WorkflowMod.next()">下一步 ${ic('arrowRight',13)}</button>
           <button class="btn btn-success btn-sm" onclick="WorkflowMod.markAllDone()">一键标记全部已完成</button>
           <button class="btn btn-danger btn-sm" onclick="WorkflowMod.reset()">重置进度</button>
         </div>
@@ -45,16 +46,16 @@ window.WorkflowMod = (function() {
 
       <div class="grid-2">
         <div class="card">
-          <div class="card-title">📌 当前步骤：${wf.steps[curStep]} <span class="tag tag-primary tag-sm">第 ${curStep+1}/9 步</span></div>
+          <div class="card-title">${ic('pin')} 当前步骤：${wf.steps[curStep]} <span class="tag tag-primary tag-sm">第 ${curStep+1}/9 步</span></div>
           <div style="background:var(--primary-soft);padding:10px 12px;border-radius:8px;margin-bottom:10px;">
-            <p style="font-size:13px;color:var(--text-2);">💡 ${STEP_GUIDES[curStep].tips}</p>
+            <p style="font-size:13px;color:var(--text-2);">${ic('bulb',13)} ${STEP_GUIDES[curStep].tips}</p>
           </div>
-          <h4 style="font-size:13px;color:var(--text-2);margin:10px 0 6px;">📋 建议准备材料</h4>
+          <h4 style="font-size:13px;color:var(--text-2);margin:10px 0 6px;">${ic('list',14)} 建议准备材料</h4>
           <ul style="font-size:13px;padding-left:18px;line-height:2;color:var(--text-2);">
             ${STEP_GUIDES[curStep].materials.map(m=>`<li>${m}</li>`).join('')}
           </ul>
           <div style="margin-top:14px;">
-            <label style="font-size:12.5px;font-weight:600;color:var(--text-2);">📝 备注 / 当前状态</label>
+            <label style="font-size:12.5px;font-weight:600;color:var(--text-2);">${ic('note',14)} 备注 / 当前状态</label>
             <textarea id="wfNote" style="width:100%;margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;min-height:72px;" placeholder="可记录该步骤进展、材料清单核对情况等">${wf.stepNotes[curStep]||''}</textarea>
             <div style="text-align:right;margin-top:6px;">
               <button class="btn btn-primary btn-sm" onclick="WorkflowMod.saveNote(${curStep})">保存备注</button>
@@ -63,7 +64,7 @@ window.WorkflowMod = (function() {
         </div>
 
         <div class="card">
-          <div class="card-title">📋 全步骤备注看板</div>
+          <div class="card-title">${ic('note')} 全步骤备注看板</div>
         ${wf.steps.map((s,i)=>`
           <div style="padding:8px 0;border-bottom:1px dashed var(--border-light);">
             <div style="display:flex;gap:8px;align-items:center;">
@@ -116,7 +117,7 @@ window.WorkflowMod = (function() {
     const wf = Store.getWorkflow();
     wf.currentStep = wf.steps.length - 1;
     Store.saveWorkflow(wf); Utils.closeModal(); render();
-    Utils.toast('🎉 恭喜完成全部流程！', 'success');
+    Utils.toast('恭喜完成全部流程！', 'success');
   }
   function saveNote(stepIdx) {
     const v = document.getElementById('wfNote').value;
@@ -128,12 +129,6 @@ window.WorkflowMod = (function() {
   }
 
   // ========== 导出 ==========
-  function exportJSON() {
-    const data = Store.exportAll();
-    Utils.downloadFile(`看房助手备份_${Utils.today()}.json`, JSON.stringify(data, null, 2), 'application/json');
-    Utils.toast('全量备份已下载','success');
-  }
-
   function exportExcel() {
     const records = Store.getRecords();
     if (!records.length) { Utils.toast('暂无房源记录可导出','warn'); return; }
@@ -160,54 +155,54 @@ window.WorkflowMod = (function() {
     const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>看房总报告 - ${Utils.today()}</title>
       <style>
         @page { size: A4; margin: 1.5cm; }
-        body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#0F172A;line-height:1.6;font-size:12px;}
-        h1{font-size:22px;border-bottom:3px solid #1E3A8A;padding-bottom:8px;}
-        h2{font-size:15px;color:#1E3A8A;margin-top:20px;padding-left:8px;border-left:4px solid #1E3A8A;}
+        body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1D1D1F;line-height:1.6;font-size:12px;}
+        h1{font-size:22px;border-bottom:3px solid #0071E3;padding-bottom:8px;}
+        h2{font-size:15px;color:#0071E3;margin-top:20px;padding-left:8px;border-left:4px solid #0071E3;}
         h3{font-size:13px;margin-top:12px;}
         table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11px;}
         th,td{border:1px solid #ddd;padding:5px 6px;}
-        th{background:#EFF6FF;}
-        .meta{color:#64748B;font-size:11px;margin:4px 0 14px;}
+        th{background:#F0F7FF;}
+        .meta{color:#6E6E73;font-size:11px;margin:4px 0 14px;}
         .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:8px 0;}
         .card{border:1px solid #ddd;border-radius:6px;padding:8px;page-break-inside:avoid;}
-        .stars{color:#D4A24C;}
+        .stars{color:#FF9F0A;}
         .bar{height:6px;background:#eee;border-radius:3px;overflow:hidden;margin:2px 0;}
-        .bar > div{height:100%;background:#1E3A8A;}
-        .footer{margin-top:30px;padding-top:10px;border-top:1px solid #ddd;text-align:center;color:#64748B;font-size:10px;}
+        .bar > div{height:100%;background:#0071E3;}
+        .footer{margin-top:30px;padding-top:10px;border-top:1px solid #ddd;text-align:center;color:#6E6E73;font-size:10px;}
       </style></head><body>
-      <h1>🏡 看房总报告</h1>
+      <h1>看房总报告</h1>
       <div class="meta">生成日期：${Utils.today()} · 共 ${records.length} 条房源记录 · ${plans.length} 条看房计划</div>
 
-      <h2>🎯 我的购房期望</h2>
+      <h2>我的购房期望</h2>
       <table>
         <tr><th style="width:20%;">预算</th><td>${exp.budgetMin}-${exp.budgetMax}万元</td>
           <th style="width:20%;">首付能力</th><td>${exp.downPayment}万元 · 月供上限 ${Utils.moneyFormat(exp.monthlyPaymentMax)}</td></tr>
         <tr><th>房型</th><td>${(exp.roomsNeeded.bedrooms||3)}室${(exp.roomsNeeded.livingRooms||2)}厅${(exp.roomsNeeded.bathrooms||1)}卫 · ${exp.areaMin}-${exp.areaMax}㎡</td>
-          <th>类型偏好</th><td>${exp.propertyPreference||'都接受'} · 区域：${(exp.preferredDistricts||[]).join('、')||'不限'}</td></tr>
+          <th>类型偏好</th><td>${exp.propertyPreference||'都接受'} · 意向区域：${Store.formatPreferredAreas()}</td></tr>
         <tr><th>硬性要求</th><td colspan="3">${(exp.mustHaves||[]).join('、')||'无'}</td></tr>
         <tr><th>通勤</th><td>工作地：${exp.workplace||'未填'} / 伴侣：${exp.partnerWorkplace||'未填'}，可接受 ${exp.maxCommuteTime} 分钟</td>
           <th>时间</th><td>预计购房：${exp.targetDate||'-'} · 入住：${exp.moveInDate||'-'}</td></tr>
       </table>
 
-      <h2>🚀 购房进度（${wf.currentStep+1}/9）</h2>
-      <table><tr>${wf.steps.map((s,i)=>`<td style="text-align:center;background:${i<wf.currentStep?'#EFF6FF':(i===wf.currentStep?'#DBEAFE':'#fff')};font-weight:${i===wf.currentStep?'700':'400'};">${i+1}. ${s}</td>`).join('')}</tr></table>
+      <h2>购房进度（${wf.currentStep+1}/9）</h2>
+      <table><tr>${wf.steps.map((s,i)=>`<td style="text-align:center;background:${i<wf.currentStep?'#F0F7FF':(i===wf.currentStep?'#A6CFFF':'#fff')};font-weight:${i===wf.currentStep?'700':'400'};">${i+1}. ${s}</td>`).join('')}</tr></table>
 
-      <h2>📋 房源记录一览（${records.length}套）</h2>
+      <h2>房源记录一览（${records.length}套）</h2>
       ${records.length===0?'<p>暂无记录</p>':`<div class="cards">
         ${records.map(r=>{
           const m=Utils.calcMatchScore(r,exp);
           return `<div class="card">
-            <h3>${r.communityName} <span style="color:#1E3A8A;">匹配度 ${m.score}</span> <span class="stars">${'★'.repeat(r.overallRating||0)}</span></h3>
+            <h3>${r.communityName} <span style="color:#0071E3;">匹配度 ${m.score}</span> <span class="stars">${'★'.repeat(r.overallRating||0)}</span></h3>
             <div>${r.district||'-'} · ${r.propertyType||''} · ${Utils.formatRooms(r.rooms)} · ${Utils.formatArea(r.area)}</div>
-            <div>💰 ${Utils.formatWan(r.totalPrice)} · 单价 ${r.unitPrice?r.unitPrice.toLocaleString():'-'}元/㎡</div>
+            <div>${Utils.formatWan(r.totalPrice)} · 单价 ${r.unitPrice?r.unitPrice.toLocaleString():'-'}元/㎡</div>
             <div>楼层：${r.floor?r.floor.current+'/'+r.floor.total:'-'}层 · ${r.orientation||''}${r.hasElevator?' · 有电梯':''} · ${r.buildYear?r.buildYear+'年('+Utils.calcHouseAgeText(r.buildYear)+')':'-'}</div>
             <div>匹配度: <div class="bar"><div style="width:${m.score}%"></div></div></div>
-            ${r.summary?`<div style="background:#EFF6FF;padding:4px 6px;border-radius:4px;margin-top:4px;">📝 ${r.summary}</div>`:''}
+            ${r.summary?`<div style="background:#F0F7FF;padding:4px 6px;border-radius:4px;margin-top:4px;">${r.summary}</div>`:''}
           </div>`;
         }).join('')}
       </div>`}
 
-      <h2>📅 看房计划</h2>
+      <h2>看房计划</h2>
       ${plans.length?`<table>
         <thead><tr><th>日期</th><th>区域</th><th>目标小区</th><th>备注</th><th>状态</th></tr></thead>
         <tbody>

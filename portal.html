@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#F5F5F7">
+<title>优宅邦 NestWise · 智慧选房，决策无忧</title>
+<meta name="description" content="优宅邦 NestWise · 个人房产智慧决策门户。AI 购房助手、六维匹配度、多房源对比、财务测算、区位分析，购房全流程一站式管理。">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/portal.css?v=20260828b">
+</head>
+<body>
+
+<!-- ============ 顶部导航 · 毛玻璃吸顶 ============ -->
+<header class="p-nav" id="pNav">
+  <div class="p-nav-inner">
+    <a class="p-brand" href="#hero">
+      <span class="p-brand-mark" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path stroke="#FFFFFF" stroke-width="2.8" d="M3 10.5 L16 2 L29 10.5"/>
+          <path stroke="#FFFFFF" stroke-width="3.2" d="M8 12 L8 28"/>
+          <path stroke="#FFFFFF" stroke-width="3.2" d="M8 12 L20 28"/>
+          <path stroke="#FFFFFF" stroke-width="3.2" d="M20 12 L20 28"/>
+        </svg>
+      </span>
+      <span class="p-brand-name">优宅邦<em>NestWise</em></span>
+    </a>
+    <nav class="p-nav-links" id="pNavLinks">
+      <a href="#features">功能</a>
+      <a href="#showcase">实景演示</a>
+      <a href="#flow">购房流程</a>
+      <a href="#cities">城市政策</a>
+    </nav>
+    <div class="p-nav-actions">
+      <a class="p-btn p-btn-primary" href="login.html">开始使用</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ HERO 首屏 ============ -->
+  <section class="p-hero" id="hero">
+    <div class="p-hero-glow" aria-hidden="true"></div>
+    <div class="p-hero-inner">
+      <p class="p-eyebrow" data-anim>优宅邦 NestWise · 个人房产智慧决策门户</p>
+      <h1 class="p-hero-title" data-anim>看房这件事，<br>从此<span>有章可循</span>。</h1>
+      <p class="p-hero-sub" data-anim>从期望建档、房源记录到多房源对比、贷款测算与决策报告——<br>优宅邦把购房全流程装进你的口袋，每一次选择都算得清楚。</p>
+      <div class="p-hero-cta" data-anim>
+        <a class="p-btn p-btn-primary p-btn-lg" href="login.html">免费开始体验</a>
+        <a class="p-btn p-btn-ghost p-btn-lg" href="#features">了解功能</a>
+      </div>
+
+      <!-- 首屏产品大图：可交互 AI 购房助手 -->
+      <div class="p-hero-shot" data-anim>
+        <div class="p-ai-demo" id="aiHeroDemo"><!-- JS 渲染 --></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 核心功能矩阵 ============ -->
+  <section class="p-section" id="features">
+    <div class="p-section-head">
+      <h2 class="p-section-title">六大能力，覆盖购房全程</h2>
+      <p class="p-section-sub">从决策到管理，从工具到报告，每一环都为"买对房子"服务。</p>
+    </div>
+    <div class="p-feature-grid" id="featureGrid"><!-- JS 渲染 --></div>
+  </section>
+
+  <!-- ============ 系统模拟数据截图秀 ============ -->
+  <section class="p-section p-section-tint" id="showcase">
+    <div class="p-section-head">
+      <h2 class="p-section-title">核心界面一览</h2>
+      <p class="p-section-sub">从房源记录、对比决策到 AI 助手，核心界面与交互流程一目了然。</p>
+    </div>
+    <div class="p-showcase" id="showcaseList"><!-- JS 渲染 --></div>
+  </section>
+
+  <!-- ============ 产品价值 ============ -->
+  <section class="p-section" id="values">
+    <div class="p-section-head">
+      <h2 class="p-section-title">不只是一本看房笔记</h2>
+    </div>
+    <div class="p-value-grid">
+      <div class="p-value">
+        <div class="p-value-num">01</div>
+        <h3>数据驱动决策</h3>
+        <p>六维匹配度实时计算，多房源同台对比，AI 给出明确的"看/买/等"建议，拒绝凭感觉买房。</p>
+      </div>
+      <div class="p-value">
+        <div class="p-value-num">02</div>
+        <h3>全流程管理</h3>
+        <p>期望建档 → 看房日程 → 记录评估 → 对比决策 → 贷款测算 → 购房进度，9 步流程环环相扣。</p>
+      </div>
+      <div class="p-value">
+        <div class="p-value-num">03</div>
+        <h3>数据不丢失</h3>
+        <p>本地 + 云端快照自动同步，换设备不换数据；一键导出 CSV / Word 报告，随时带走。</p>
+      </div>
+      <div class="p-value">
+        <div class="p-value-num">04</div>
+        <h3>本地部署 · 隐私可控</h3>
+        <p>零依赖本地服务，账号数据由你掌控；管理员可配置 AI / 地图 / 资讯接口，全员共享。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 购房流程 ============ -->
+  <section class="p-section p-section-dark" id="flow">
+    <div class="p-section-head">
+      <h2 class="p-section-title">9 步走完整个购房旅程</h2>
+      <p class="p-section-sub">每一步都配有操作指引与材料清单，进度一目了然。</p>
+    </div>
+    <div class="p-flow" id="flowList"><!-- JS 渲染 --></div>
+  </section>
+
+  <!-- ============ 多城市支持 ============ -->
+  <section class="p-section" id="cities">
+    <div class="p-section-head">
+      <h2 class="p-section-title">15+ 城购房政策，随选随算</h2>
+      <p class="p-section-sub">贷款利率、公积金限额、维修基金、议价空间——财务测算自动适配所在城市。</p>
+    </div>
+    <div class="p-cities" id="cityList"><!-- JS 渲染 --></div>
+  </section>
+
+  <!-- ============ 底部 CTA ============ -->
+  <section class="p-cta" id="cta">
+    <div class="p-cta-inner">
+      <h2 class="p-cta-title">准备好认真选一套房了吗？</h2>
+      <p class="p-cta-sub">现在就为你的购房决策建一份档案。</p>
+      <a class="p-btn p-btn-primary p-btn-lg" href="login.html">立即开始</a>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ 页脚 ============ -->
+<footer class="p-footer">
+  <div class="p-footer-inner">
+    <div class="p-footer-brand">
+      <span class="p-brand-mark" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path stroke="#FFFFFF" stroke-width="2.8" d="M3 10.5 L16 2 L29 10.5"/>
+          <path stroke="#FFFFFF" stroke-width="3.2" d="M8 12 L8 28"/>
+          <path stroke="#FFFFFF" stroke-width="3.2" d="M8 12 L20 28"/>
+          <path stroke="#FFFFFF" stroke-width="3.2" d="M20 12 L20 28"/>
+        </svg>
+      </span>
+      <strong>优宅邦 NestWise</strong>
+    </div>
+    <p class="p-footer-note">智慧选房 · 决策无忧</p>
+  </div>
+</footer>
+
+<!-- 返回顶部 -->
+<button type="button" id="pToTop" class="p-to-top" aria-label="返回顶部">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
+</button>
+
+<script src="js/portal.js?v=20260828c"></script>
+</body>
+</html>

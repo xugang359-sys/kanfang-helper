@@ -2,7 +2,8 @@
    M1 房源记录中心模块
    ============================================ */
 window.RecordsMod = (function() {
-  let curFilter = { district:'', intention:'', kw:'' };
+  const ic = Utils.icon;   // SF Symbols 风格图标
+  let curFilter = { prov:'', city:'', district:'', intention:'', kw:'' };
 
   // 兜底计算总体评分（针对老数据：overallRating=0/null 但有 dimRatings 时按均值计算）
   function resolveOverall(r) {
@@ -18,9 +19,21 @@ window.RecordsMod = (function() {
     renderList();
   }
 
+  // 解析房源所在城市：优先记录自带 city，否则通过区域名反查全国城市字典（兼容旧数据）
+  function resolveCity(r) {
+    if (r && r.city && Store.CITIES[r.city]) return r.city;
+    if (!r) return '';
+    for (const c in Store.CITIES) {
+      if ((Store.CITIES[c]||[]).includes(r.district)) return c;
+    }
+    return '';
+  }
+
   function renderList() {
     let list = Store.getRecords();
     const f = curFilter;
+    // 默认展示全部记录，筛选条件按需过滤（省市 → 区域 → 意向 → 关键词）
+    if (f.city) list = list.filter(r => resolveCity(r) === f.city);
     if (f.district) list = list.filter(r => r.district === f.district);
     if (f.intention) list = list.filter(r => r.intention === f.intention);
     if (f.kw) list = list.filter(r => (r.communityName||'').includes(f.kw) || (r.address||'').includes(f.kw) || (r.summary||'').includes(f.kw));
@@ -29,20 +42,28 @@ window.RecordsMod = (function() {
     const html = `
       <div class="page-header">
         <div>
-          <h2><span class="emoji">📋</span>房源记录中心</h2>
+          <h2><span class="emoji">${ic('list')}</span>房源记录中心</h2>
           <p class="page-desc">每次看房后结构化记录房源信息和观后感，共 <strong>${list.length}</strong> 条记录。</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-ghost btn-sm" onclick="RecordsMod.quickAdd()">⚡ 快速记录</button>
-          <button class="btn btn-primary btn-sm" onclick="RecordsMod.edit()">➕ 新增房源记录</button>
+          <button class="btn btn-ghost btn-sm" onclick="RecordsMod.quickAdd()">${ic('bolt',15)} 快速记录</button>
+          <button class="btn btn-primary btn-sm" onclick="RecordsMod.edit()">${ic('plus',15)} 新增房源记录</button>
         </div>
       </div>
 
       <div class="filter-bar">
         <input type="text" placeholder="搜索小区/地址/总结..." id="fKw" value="${f.kw}">
+        <select id="fProv" onchange="RecordsMod.onFltProv()" style="max-width:110px;">
+          <option value="">全部省份</option>
+          ${Object.keys(Store.PROVINCES).map(p=>`<option ${f.prov===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+        <select id="fCity" onchange="RecordsMod.onFltCity()" style="max-width:120px;">
+          <option value="">全部城市</option>
+          ${f.prov ? (Store.PROVINCES[f.prov]||[]).map(c=>`<option ${f.city===c?'selected':''}>${c}</option>`).join('') : ''}
+        </select>
         <select id="fDistrict">
           <option value="">全部区域</option>
-          ${Store.DISTRICTS.map(d=>`<option ${f.district===d?'selected':''}>${d}</option>`).join('')}
+          ${f.city ? (Store.CITIES[f.city]||[]).map(d=>`<option ${f.district===d?'selected':''}>${d}</option>`).join('') : ''}
         </select>
         <select id="fIntention">
           <option value="">全部意向</option>
@@ -55,15 +76,29 @@ window.RecordsMod = (function() {
       <div style="margin-top:4px;">
         ${list.length === 0 ? `
           <div class="empty-state">
-            <div class="icon">📭</div>
-            <h4>还没有房源记录</h4>
-            <p>线下看房后，点右上角"新增房源记录"开始建立你的看房档案吧。</p>
-            <button class="btn btn-primary btn-sm" onclick="RecordsMod.edit()">➕ 新增第一条记录</button>
+            <div class="icon">${ic('inbox',54)}</div>
+            <h4>${Store.getRecords().length ? '没有符合条件的房源记录' : '还没有房源记录'}</h4>
+            <p>${Store.getRecords().length ? '可调整上方筛选条件，或点"重置"查看全部记录。' : '线下看房后，点右上角"新增房源记录"开始建立你的看房档案吧。'}</p>
+            <button class="btn btn-primary btn-sm" onclick="RecordsMod.edit()">${ic('plus',15)} 新增记录</button>
           </div>
         ` : list.map(r => renderListItem(r)).join('')}
       </div>
     `;
     App.setContent(html);
+  }
+
+  // 省份变化：联动城市下拉并清空已选城市/区域
+  function onFltProv() {
+    curFilter.prov = document.getElementById('fProv').value;
+    curFilter.city = '';
+    curFilter.district = '';
+    renderList();
+  }
+  // 城市变化：联动区域下拉并清空已选区域
+  function onFltCity() {
+    curFilter.city = document.getElementById('fCity').value;
+    curFilter.district = '';
+    renderList();
   }
 
   function renderListItem(r) {
@@ -72,19 +107,19 @@ window.RecordsMod = (function() {
     const age = Utils.calcHouseAgeText(r.buildYear);
     return `
       <div class="list-item" onclick="RecordsMod.view('${r.id}')">
-        <div class="list-cover">${r.district ? r.district[0] : '房'}</div>
+        <div class="list-cover">${Utils.matchRingHTML(match.score)}</div>
         <div class="list-content">
           <div class="list-title">
             ${r.communityName || '未命名房源'}
-            <span class="tag tag-primary tag-sm">${r.district || '-'}</span>
+            <span class="tag tag-primary tag-sm">${resolveCity(r)?resolveCity(r)+'·':''}${r.district || '-'}</span>
             <span class="tag ${Utils.intentionTag(r.intention)} tag-sm">${Utils.intentionTextShort(r.intention)}</span>
             <span class="tag tag-sm">${r.propertyType || '-'}</span>
           </div>
           <div class="list-meta">
-            <span>💰 ${Utils.formatWan(r.totalPrice)} <small style="color:var(--text-4)">(${r.unitPrice?r.unitPrice.toLocaleString()+'元/㎡':'-'})</small></span>
-            <span>🏘️ ${Utils.formatRooms(r.rooms)} · ${Utils.formatArea(r.area)}</span>
-            <span>📅 ${r.viewingDate || '未填写日期'}</span>
-            <span>⭐ ${resolveOverall(r) || '-'}/5</span>
+            <span>${ic('wallet',14)} ${Utils.formatWan(r.totalPrice)} <small style="color:var(--text-4)">(${r.unitPrice?r.unitPrice.toLocaleString()+'元/㎡':'-'})</small></span>
+            <span>${ic('houses',14)} ${Utils.formatRooms(r.rooms)} · ${Utils.formatArea(r.area)}</span>
+            <span>${ic('calendar',14)} ${r.viewingDate || '未填写日期'}</span>
+            <span>${ic('star',14)} ${resolveOverall(r) || '-'}/5</span>
           </div>
           <div class="list-desc">
             <strong style="color:var(--primary)">匹配度 ${match.score}</strong> ·
@@ -109,7 +144,7 @@ window.RecordsMod = (function() {
     renderList();
   }
   function clearFilter() {
-    curFilter = { district:'', intention:'', kw:'' };
+    curFilter = { prov:'', city:'', district:'', intention:'', kw:'' };
     renderList();
   }
 
@@ -140,17 +175,21 @@ window.RecordsMod = (function() {
     const floor = d.floor || { current: '', total: '' };
     const dim = d.dimRatings || { lighting:'', ventilation:'', noise:'', layout:'', facility:'', commute:'' };
     const basic = `
-      <div class="form-section-title">📍 基本信息</div>
+      <div class="form-section-title">${ic('pin')} 基本信息</div>
       <div class="form-grid">
         <div class="form-item">
           <label><span class="req">*</span>小区名称</label>
           <input type="text" data-field="communityName" placeholder="如：百家湖花园">
         </div>
         <div class="form-item">
+          <label><span class="req">*</span>所在城市（省 → 市）</label>
+          <div class="cascade-group">${Store.cityCascadeHTML(d.city || Store.getCity(), 'rec', { id: 'rec_city', onCity: 'RecordsMod.syncRecDistricts()', attrs: ' data-field="city"' })}</div>
+        </div>
+        <div class="form-item">
           <label><span class="req">*</span>所在区域</label>
-          <select data-field="district">
+          <select id="rec_district" data-field="district">
             <option value="">请选择</option>
-            ${Store.DISTRICTS.map(v=>`<option>${v}</option>`).join('')}
+            ${(Store.CITIES[d.city] || Store.getDistricts()).map(v=>`<option>${v}</option>`).join('')}
           </select>
         </div>
         <div class="form-item full">
@@ -179,7 +218,7 @@ window.RecordsMod = (function() {
       </div>
     `;
     const property = `
-      <div class="form-section-title">🏘️ 房源属性</div>
+      <div class="form-section-title">${ic('houses')} 房源属性</div>
       <div class="form-grid-4">
         <div class="form-item"><label>室</label><input type="number" data-field="rooms.bedrooms" min="0"></div>
         <div class="form-item"><label>厅</label><input type="number" data-field="rooms.livingRooms" min="0"></div>
@@ -248,7 +287,7 @@ window.RecordsMod = (function() {
       </div>
     `;
     const review = `
-      <div class="form-section-title">💭 观后感评价</div>
+      <div class="form-section-title">${ic('chat')} 观后感评价</div>
       <div class="form-grid">
         <div class="form-item">
           <label>总体评分</label>
@@ -277,7 +316,7 @@ window.RecordsMod = (function() {
         </div>
       </div>
 
-      <div class="form-section-title">⭐ 分维度评分</div>
+      <div class="form-section-title">${ic('star')} 分维度评分</div>
       <div class="form-grid-3">
         ${[['采光','lighting'],['通风','ventilation'],['噪音','noise'],['户型设计','layout'],['周边配套','facility'],['通勤便利','commute']].map(([cn,en])=>`
           <div class="form-item">
@@ -290,11 +329,11 @@ window.RecordsMod = (function() {
 
       <div class="form-grid" style="margin-top:12px;">
         <div class="form-item full">
-          <label>✨ 优势记录（亮点/满意之处）</label>
+          <label>${ic('sparkle',14)} 优势记录（亮点/满意之处）</label>
           <textarea data-field="pros" placeholder="如：户型方正、离地铁近、小区绿化好..."></textarea>
         </div>
         <div class="form-item full">
-          <label>⚠️ 缺点记录（硬伤/不满之处）</label>
+          <label>${ic('alert',14)} 缺点记录（硬伤/不满之处）</label>
           <textarea data-field="cons" placeholder="如：临街吵、楼龄老、水压不足..."></textarea>
         </div>
       </div>
@@ -318,6 +357,14 @@ window.RecordsMod = (function() {
     bindCommunityAutoDistrict(form);
   }
 
+  // 城市变更 → 联动重绘区域下拉
+  function syncRecDistricts() {
+    const city = document.getElementById('rec_city').value;
+    const sel = document.getElementById('rec_district');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">请选择</option>' + (Store.CITIES[city]||[]).map(v=>`<option>${v}</option>`).join('');
+  }
+
   // 输入小区名后自动识别区域
   function bindCommunityAutoDistrict(form) {
     const nameInput = form.querySelector('[data-field="communityName"]');
@@ -338,8 +385,10 @@ window.RecordsMod = (function() {
     if (distSelect.value) return; // 已手动选过则不覆盖
     const srvKey = (localStorage.getItem('k_amap_srv')||'').trim();
     if (!srvKey) return; // 无Key无法识别
+    const cityEl = document.getElementById('rec_city');
+    const city = cityEl ? cityEl.value : Store.getCity();
     try {
-      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(name)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}&citylimit=true&types=120200|120300&offset=1`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.status === '1' && data.pois && data.pois[0]) {
@@ -413,7 +462,11 @@ window.RecordsMod = (function() {
   }
 
   function doSave(id) {
+    const form = document.getElementById('recEditForm');
     const data = collectEditForm();
+    const pidEl = form && form.querySelector('[data-field="_planId"]');
+    const planId = pidEl ? pidEl.value : null;
+    delete data._planId;   // 内部来源标记，不写入记录
     if (!data.communityName) { Utils.toast('请填写小区名称','danger'); return; }
     if (!data.district) { Utils.toast('请选择所在区域','danger'); return; }
     if (id) data.id = id;
@@ -427,9 +480,18 @@ window.RecordsMod = (function() {
       }
     }
     const rid = Store.saveRecord(data);
+    // 由看房计划"转房源记录"而来：记录保存成功后才回写计划为已转记录，绑定 recordId
+    if (planId) {
+      const plan = Store.getPlans().find(x => x.id === planId);
+      if (plan && !plan.recordId) {
+        plan.status = 'done';
+        plan.recordId = rid;
+        Store.savePlan(plan);
+      }
+    }
     Utils.closeModal();
     renderList();
-    Utils.toast(id ? '已更新房源记录' : '已新增房源记录', 'success');
+    Utils.toast(id ? '已更新房源记录' : (planId ? '已新增房源记录，该计划已标记为完成' : '已新增房源记录'), 'success');
   }
 
   function remove(id) {
@@ -463,21 +525,21 @@ window.RecordsMod = (function() {
     const html = `
       <div class="page-header">
         <div>
-          <h2><span class="emoji">🏠</span>${r.communityName}
-            <span class="tag tag-primary tag-sm">${r.district}</span>
+          <h2><span class="emoji">${ic('house')}</span>${r.communityName}
+            <span class="tag tag-primary tag-sm">${resolveCity(r)?resolveCity(r)+'·':''}${r.district}</span>
             <span class="tag ${Utils.intentionTag(r.intention)} tag-sm">${r.intention||'-'}</span>
           </h2>
           <p class="page-desc">${r.address||'未填写地址'} · 看房日期：${r.viewingDate||'-'}</p>
         </div>
         <div class="page-actions">
           <button class="btn btn-ghost btn-sm" onclick="App.navigate('records')">← 返回列表</button>
-          <button class="btn btn-primary btn-sm" onclick="RecordsMod.edit('${r.id}')">✏️ 编辑</button>
+          <button class="btn btn-primary btn-sm" onclick="RecordsMod.edit('${r.id}')">${ic('edit',15)} 编辑</button>
         </div>
       </div>
 
       <div class="grid-2">
         <div class="card">
-          <div class="card-title">📊 综合评估</div>
+          <div class="card-title">${ic('chart')} 综合评估</div>
           <div style="display:flex;align-items:center;gap:20px;">
             ${Utils.matchRingHTML(match.score)}
             <div style="flex:1;">
@@ -497,23 +559,23 @@ window.RecordsMod = (function() {
           </div>
           <div style="height:240px;margin-top:10px;" id="radarView"></div>
           <details style="margin-top:8px;font-size:11.5px;color:var(--text-3);">
-            <summary style="cursor:pointer;color:var(--primary);">📖 评分标准与决策档位说明</summary>
+            <summary style="cursor:pointer;color:var(--primary);">${ic('book',14)} 评分标准与决策档位说明</summary>
             <div style="margin-top:8px;padding:10px;background:var(--primary-soft);border-radius:6px;line-height:1.7;">
               <strong>加权维度（总分 0-100）：</strong>预算 25% · 户型 20% · 通勤 15% · 配套 15% · 观感 15% · 潜力 10%<br>
               <strong>决策档位：</strong>
-              <span style="color:#16A34A;">≥85 强烈推荐</span> ·
-              <span style="color:#1E3A8A;">70-84 推荐复看</span> ·
-              <span style="color:#3B82F6;">55-69 建议观望</span> ·
-              <span style="color:#D4A24C;">40-54 谨慎考虑</span> ·
-              <span style="color:#DC2626;">&lt;40 建议放弃</span>
+              <span style="color:#34C759;">≥85 强烈推荐</span> ·
+              <span style="color:#0071E3;">70-84 推荐复看</span> ·
+              <span style="color:#2997FF;">55-69 建议观望</span> ·
+              <span style="color:#FF9F0A;">40-54 谨慎考虑</span> ·
+              <span style="color:#FF3B30;">&lt;40 建议放弃</span>
             </div>
           </details>
         </div>
 
         <div class="card">
-          <div class="card-title">🏷️ 基本信息</div>
+          <div class="card-title">${ic('tag')} 基本信息</div>
           <div class="grid-2" style="gap:10px;font-size:13px;">
-            ${KV("小区", r.communityName)}${KV("区域", r.district)}${KV("类型", r.propertyType)}${KV("户型", Utils.formatRooms(r.rooms))}
+            ${KV("小区", r.communityName)}${KV("城市", resolveCity(r)||'-')}${KV("区域", r.district)}${KV("类型", r.propertyType)}${KV("户型", Utils.formatRooms(r.rooms))}
             ${KV("面积", Utils.formatArea(r.area))}${KV("楼层", floorText)}
             ${KV("朝向", (r.orientation||'-')+(r.isNorthSouthTransparent?' · 南北通透':''))}
             ${KV("电梯", r.hasElevator==null?'-':(r.hasElevator?'有':'无'))}
@@ -529,7 +591,7 @@ window.RecordsMod = (function() {
         </div>
 
         <div class="card">
-          <div class="card-title">💭 观后感评价</div>
+          <div class="card-title">${ic('chat')} 观后感评价</div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
             <div><div style="font-size:12px;color:var(--text-3)">总体评分 <strong style="color:var(--primary)">${resolveOverall(r)||'0'}</strong>/5</div><div style="margin-top:4px;">${Utils.renderStars(resolveOverall(r))}</div></div>
             ${[['采光','lighting'],['通风','ventilation'],['噪音','noise'],['户型','layout'],['配套','facility'],['通勤','commute']].map(([cn,k])=>`
@@ -541,15 +603,15 @@ window.RecordsMod = (function() {
           <div style="background:var(--primary-soft);padding:10px 12px;border-radius:6px;font-size:13px;margin:10px 0;">
             <strong>一句话总结：</strong>${r.summary||'（未填写）'}
           </div>
-          ${r.pros?`<div style="margin:8px 0;"><div style="color:var(--success);font-weight:600;font-size:12.5px;">✨ 优势</div><p style="font-size:13px;color:var(--text-2);margin-top:4px;">${r.pros}</p></div>`:''}
-          ${r.cons?`<div style="margin:8px 0;"><div style="color:var(--warn);font-weight:600;font-size:12.5px;">⚠️ 缺点</div><p style="font-size:13px;color:var(--text-2);margin-top:4px;">${r.cons}</p></div>`:''}
+          ${r.pros?`<div style="margin:8px 0;"><div style="color:var(--success);font-weight:600;font-size:12.5px;">${ic('sparkle',14)} 优势</div><p style="font-size:13px;color:var(--text-2);margin-top:4px;">${r.pros}</p></div>`:''}
+          ${r.cons?`<div style="margin:8px 0;"><div style="color:var(--warn);font-weight:600;font-size:12.5px;">${ic('alert',14)} 缺点</div><p style="font-size:13px;color:var(--text-2);margin-top:4px;">${r.cons}</p></div>`:''}
         </div>
 
         <div class="card">
-          <div class="card-title">✅ 实地检查清单 ${r.checklist && Object.keys(r.checklist).length?'<span class="tag tag-success tag-sm">已填写</span>':''}</div>
+          <div class="card-title">${ic('check')} 实地检查清单 ${r.checklist && Object.keys(r.checklist).length?'<span class="tag tag-success tag-sm">已填写</span>':''}</div>
           ${renderChecklistResult(r.checklist)}
           <div style="margin-top:10px;text-align:right;">
-            <button class="btn btn-ghost btn-sm" onclick="AidsMod.openChecklistFor('${r.id}')">去填写检查清单</button>
+            <button class="btn btn-ghost btn-sm" onclick="RecordsMod.openChecklistFor('${r.id}')">去填写检查清单</button>
           </div>
         </div>
       </div>
@@ -584,8 +646,8 @@ window.RecordsMod = (function() {
           ${items.map(it=>{
             const v = catResult[it]; total++;
             if (v==='ok') ok++; else if (v==='warn') warn++; else if (v==='bad') bad++;
-            const icon = v==='ok'?'✅':(v==='warn'?'⚠️':(v==='bad'?'❌':'—'));
-            return `<div style="font-size:12px;color:var(--text-2);">${icon} ${it}</div>`;
+            const stIcon = v==='ok'?ic('check',12):(v==='warn'?ic('alert',12):(v==='bad'?ic('x',12):'—'));
+            return `<div style="font-size:12px;color:var(--text-2);">${stIcon} ${it}</div>`;
           }).join('')}
         </div>
       </div>`;
@@ -602,5 +664,61 @@ window.RecordsMod = (function() {
     return `<div style="display:flex;gap:6px;"><span style="color:var(--text-3);flex-shrink:0;">${k}：</span><span style="flex:1;color:var(--text-1);">${v||'-'}</span></div>`;
   }
 
-  return { render, renderList, doFilter, clearFilter, edit, quickAdd, goFullEdit, doSave, remove, doRemove, view, autoPrice, autoTotal, renderChecklistResult, KV };
+  // ============= 实地检查清单 · 记录内弹窗（原 M10 独立模块已移除，此功能保留在房源记录内） =============
+  function openChecklistFor(recordId) {
+    const r = Store.getRecord(recordId);
+    const data = (r && r.checklist) ? r.checklist : {};
+    const body = `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:13px;margin-bottom:6px;">关联房源：<strong>${r?r.communityName:'-'}</strong> · ${r?r.district:''}</div>
+      </div>
+      <div id="modalChecklistBox">${renderChecklistItemsModal(data)}</div>
+    `;
+    Utils.openModal({title:'实地检查清单', body, size:'lg',
+      footer:`<button class="btn btn-ghost" onclick="Utils.closeModal()">取消</button><button class="btn btn-primary" onclick="RecordsMod.saveModalCl('${recordId}')">保存</button>`});
+    setTimeout(()=>document.querySelectorAll('#modalChecklistBox .ci-btn').forEach(b=>b.addEventListener('click',()=>{
+      const box=b.parentElement;
+      box.querySelectorAll('.ci-btn').forEach(x=>x.classList.remove('active'));
+      if (b.dataset.val) b.classList.add('active');
+    })), 20);
+  }
+  function renderChecklistItemsModal(data) {
+    const cats = Store.DEFAULT_CHECKLIST;
+    return Object.entries(cats).map(([cat, items])=>`
+      <div style="margin-bottom:14px;">
+        <div style="font-weight:600;color:var(--primary);padding:8px 10px;background:var(--primary-soft);border-radius:6px;margin-bottom:8px;">${ic('pin',14)} ${cat}</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+          ${items.map(it=>{
+            const v = (data[cat]||{})[it];
+            return `<div style="border:1px solid var(--border-light);padding:8px 10px;border-radius:6px;">
+              <div style="font-size:12.5px;margin-bottom:5px;">${it}</div>
+              <div class="ci-actions" data-ci="${cat}" data-item="${it}">
+                <button class="ci-btn ok ${v==='ok'?'active':''}" data-val="ok">${ic('check',12)}</button>
+                <button class="ci-btn warn ${v==='warn'?'active':''}" data-val="warn">${ic('alert',12)}</button>
+                <button class="ci-btn bad ${v==='bad'?'active':''}" data-val="bad">${ic('x',12)}</button>
+                <button class="ci-btn ${!v?'active':''}" data-val="">—</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('');
+  }
+  function saveModalCl(recordId) {
+    const result = {};
+    document.querySelectorAll('#modalChecklistBox [data-ci]').forEach(ci=>{
+      const cat = ci.dataset.ci, item = ci.dataset.item;
+      const active = ci.querySelector('.ci-btn.active');
+      const v = active ? active.dataset.val : '';
+      if (!v) return;
+      if (!result[cat]) result[cat] = {};
+      result[cat][item] = v;
+    });
+    const r = Store.getRecord(recordId);
+    if (r) { r.checklist = result; Store.saveRecord(r); }
+    Utils.closeModal();
+    Utils.toast('检查清单已保存','success');
+    if (r) view(recordId);
+  }
+
+  return { render, renderList, doFilter, clearFilter, onFltProv, onFltCity, edit, quickAdd, goFullEdit, doSave, remove, doRemove, view, autoPrice, autoTotal, renderChecklistResult, KV, syncRecDistricts, openChecklistFor, saveModalCl };
 })();

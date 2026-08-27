@@ -1,9 +1,15 @@
 /* ============================================
    M9 区位分析工具集
-   通勤/学区/配套/房价趋势
+   通勤/学区/配套/距离测算
    ============================================ */
 window.LocationMod = (function() {
+  const ic = Utils.icon;   // SF Symbols 风格图标
   let tab = 'commute';
+  // 各子模块内独立城市（默认取右上角设置城市，每个输入点可分别选择）
+  let commute  = { workCity: Store.getCity(), partCity: Store.getCity(), commCity: Store.getCity() };
+  let schoolCity   = Store.getCity();
+  let facilityCity = Store.getCity();
+  let distCities   = { fromCity: Store.getCity(), toCity: Store.getCity() };
 
   // ===== 高德 API 辅助 =====
   function getAmapKey() {
@@ -14,30 +20,46 @@ window.LocationMod = (function() {
   }
   function amapConfigured() { return !!getAmapKey().srv; }
 
-  // 高德地理编码：地址 → 坐标
-  async function geocode(address, city='南京') {
+  // fetch 带超时：防止网络挂起导致界面卡在 loading（默认8秒）
+  function fetchT(url, timeout=8000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), timeout);
+    return fetch(url, { signal: ctrl.signal }).finally(()=>clearTimeout(t));
+  }
+
+  // 高德地理编码：地址 → 坐标（失败时用 POI 文本搜索兜底，提高跨城/小区名解析成功率）
+  async function geocode(address, city=Store.getCity()) {
     const key = getAmapKey().srv;
     if (!key) return null;
     const url = `https://restapi.amap.com/v3/geocode/geo?key=${encodeURIComponent(key)}&address=${encodeURIComponent(address)}&city=${encodeURIComponent(city)}`;
     try {
-      const res = await fetch(url);
+      const res = await fetchT(url);
       const data = await res.json();
       if (data.status === '1' && data.geocodes && data.geocodes[0]) {
         return data.geocodes[0].location; // "lng,lat"
       }
     } catch(e) { console.error('geocode err', e); }
+    // 兜底：按 city 限定做 POI 文本搜索（小区/地标名更常见，geocode 常解析失败）
+    try {
+      const url2 = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(key)}&keywords=${encodeURIComponent(address)}&city=${encodeURIComponent(city)}&citylimit=true&offset=1`;
+      const res2 = await fetchT(url2);
+      const data2 = await res2.json();
+      if (data2.status === '1' && data2.pois && data2.pois[0] && data2.pois[0].location) {
+        return data2.pois[0].location;
+      }
+    } catch(e) { console.error('geocode-poi err', e); }
     return null;
   }
 
-  // 高德路径规划：driving/transit
-  async function routePlan(origin, destination, mode='driving') {
+  // 高德路径规划：driving/transit（transit 支持 city=起点城市, cityd=终点城市，跨城公交正确传参）
+  async function routePlan(origin, destination, mode='driving', city=Store.getCity(), cityd=null) {
     const key = getAmapKey().srv;
     if (!key) return null;
     const url = mode === 'driving'
       ? `https://restapi.amap.com/v3/direction/driving?key=${encodeURIComponent(key)}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&strategy=10`
-      : `https://restapi.amap.com/v3/direction/transit/integrated?key=${encodeURIComponent(key)}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&city=南京&cityd=南京`;
+      : `https://restapi.amap.com/v3/direction/transit/integrated?key=${encodeURIComponent(key)}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(city)}&cityd=${encodeURIComponent(cityd || city)}`;
     try {
-      const res = await fetch(url);
+      const res = await fetchT(url);
       const data = await res.json();
       if (data.status === '1') {
         if (mode === 'driving' && data.route && data.route.paths && data.route.paths[0]) {
@@ -53,18 +75,21 @@ window.LocationMod = (function() {
     return null;
   }
 
-  // 高德 POI 周边搜索
+  // 高德 POI 周边搜索（QPS 限流时延迟重试一次）
   async function searchAround(location, types, radius=3000) {
     const key = getAmapKey().srv;
     if (!key || !location) return [];
     const url = `https://restapi.amap.com/v3/place/around?key=${encodeURIComponent(key)}&location=${encodeURIComponent(location)}&types=${encodeURIComponent(types)}&radius=${radius}&offset=10&extensions=all`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.status === '1' && data.pois) {
-        return data.pois.map(p => ({ name: p.name, distance: p.distance, address: p.address||'', location: p.location||'' }));
-      }
-    } catch(e) { console.error('around err', e); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.status === '1' && data.pois) {
+          return data.pois.map(p => ({ name: p.name, distance: p.distance, address: p.address||'', location: p.location||'', type: p.type||'' }));
+        }
+      } catch(e) { console.error('around err', e); }
+      if (attempt === 0) await new Promise(r => setTimeout(r, 350)); // 限流降速后重试
+    }
     return [];
   }
 
@@ -78,14 +103,14 @@ window.LocationMod = (function() {
       if (!jsKey) { _amapPromise = null; reject(new Error('未配置高德JS Key')); return; }
       const cb = '_amap_init_cb_' + Date.now();
       let settled = false;
-      // 8秒超时：防止 script 标签加载卡住不返回
+      // 5秒超时：防止 script 标签加载卡住不返回
       const timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
         _amapPromise = null;
-        reject(new Error('高德SDK加载超时（8秒），请检查JS Key或网络'));
+        reject(new Error('高德SDK加载超时（5秒），请检查JS Key或网络'));
         try { delete window[cb]; } catch(e) {}
-      }, 8000);
+      }, 5000);
       window[cb] = function() {
         if (settled) return;
         settled = true;
@@ -141,24 +166,23 @@ window.LocationMod = (function() {
       App.setContent(Utils.apiGate('amap'));
       return;
     }
-    const keyStatus = `<span class="tag tag-success tag-sm">✓ 高德API已接入</span>`;
+    // 每次进入各子模块城市重置为右上角设置城市（各工具内可再分别选择）
+    commute  = { workCity: Store.getCity(), partCity: Store.getCity(), commCity: Store.getCity() };
+    schoolCity = facilityCity = Store.getCity();
+    distCities = { fromCity: Store.getCity(), toCity: Store.getCity() };
     const html = `
       <div class="page-header">
         <div>
-          <h2><span class="emoji">🗺️</span>区位分析工具集</h2>
-          <p class="page-desc">通勤/学区/配套/房价趋势四大区位分析工具 ${keyStatus}</p>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-accent btn-sm" onclick="LocationMod.applyMapKey()">🌐 接入高德地图API</button>
+          <h2><span class="emoji">${ic('map')}</span>区位分析工具集</h2>
+          <p class="page-desc">通勤/学区/配套/距离测算四大区位分析工具</p>
         </div>
       </div>
 
       <div class="sub-tabs" id="locTabs">
-        <div class="sub-tab" data-t="commute">🚗 通勤时间分析</div>
-        <div class="sub-tab" data-t="school">🎓 学区查询</div>
-        <div class="sub-tab" data-t="facility">🏥 周边配套地图</div>
-        <div class="sub-tab" data-t="distance">📏 距离测算</div>
-        <div class="sub-tab" data-t="trend">📈 区域房价趋势</div>
+        <div class="sub-tab" data-t="commute">${ic('car',15)} 通勤时间分析</div>
+        <div class="sub-tab" data-t="school">${ic('school',15)} 学区查询</div>
+        <div class="sub-tab" data-t="facility">${ic('hospital',15)} 周边配套地图</div>
+        <div class="sub-tab" data-t="distance">${ic('ruler',15)} 距离测算</div>
       </div>
 
       <div id="locContent"></div>
@@ -182,10 +206,33 @@ window.LocationMod = (function() {
     else if (tab==='school') box.innerHTML = renderSchool();
     else if (tab==='facility') box.innerHTML = renderFacility();
     else if (tab==='distance') box.innerHTML = renderDistance();
-    else { box.innerHTML = renderTrend(); renderTrendChart(); }
     // 绑定智能补全（所有带 data-autocomplete 的输入框）
     bindAutocomplete();
+    // 预加载高德 JS SDK：距离测算/周边配套共用，点击"计算距离"后无需再等 SDK 加载
+    if ((localStorage.getItem('k_amap_js')||'').trim()) loadAmapSDK().catch(()=>{});
   }
+
+  // ===== 子模块城市选择：更新对应城市变量并联动区域/输入框 =====
+  // 更新输入框的 data-city（供智能补全按城市过滤）
+  function updateInputCity(id, city) {
+    const el = document.getElementById(id);
+    if (el) el.dataset.city = city;
+  }
+  // 重绘区域/板块下拉为指定城市的区域
+  function syncDistrictSelect(selectId, city, keepValue=true) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">请选择</option>' + (Store.CITIES[city]||[]).map(d=>`<option>${d}</option>`).join('');
+    if (keepValue && cur && [...sel.options].some(o=>o.value===cur||o.text===cur)) sel.value = cur;
+  }
+  function setWorkCity(sel)   { commute.workCity = sel.value; updateInputCity('c_work', sel.value); }
+  function setPartCity(sel)   { commute.partCity = sel.value; updateInputCity('c_part', sel.value); }
+  function setCommCity(sel)   { commute.commCity = sel.value; syncDistrictSelect('c_district', sel.value, false); updateInputCity('c_community', sel.value); }
+  function setSchoolCity(sel) { schoolCity = sel.value; syncDistrictSelect('s_dist', sel.value, false); updateInputCity('s_comm', sel.value); }
+  function setFacilityCity(sel) { facilityCity = sel.value; syncDistrictSelect('f_dist', sel.value, false); updateInputCity('f_comm', sel.value); }
+  function setFromCity(sel)   { distCities.fromCity = sel.value; renderTab(); } // 重绘以更新快速选择示例/placeholder
+  function setToCity(sel)     { distCities.toCity = sel.value; renderTab(); }
 
   // ===== 智能补全（基于高德 inputtips 或本地板块数据降级） =====
   // POI 类型映射：补全时按 data-poi-type 限制类别
@@ -197,22 +244,23 @@ window.LocationMod = (function() {
     school:   '141200|141205',          // 学校/幼儿园
   };
   let _acCache = {};
-  async function fetchInputTips(keyword, poiType='') {
+  async function fetchInputTips(input, keyword, poiType='') {
     if (!keyword || keyword.length < 1) return [];
-    const cacheKey = keyword + '|' + poiType;
+    const city = input.dataset.city || Store.getCity();
+    const cacheKey = city + '|' + keyword + '|' + poiType;
     if (_acCache[cacheKey]) return _acCache[cacheKey];
     const key = getAmapKey().srv;
     if (!key) {
       // 本地降级：从已有房源记录和板块数据中匹配
       const records = Store.getRecords();
-      const local = records.map(r=>r.communityName).filter(n=>n && n.includes(keyword));
-      const districts = Object.keys(DISTRICT_DATA).filter(d=>d.includes(keyword));
+      const local = records.filter(r=>!city || r.city===city).map(r=>r.communityName).filter(n=>n && n.includes(keyword));
+      const districts = (Store.CITIES[city] || Store.getDistricts()).filter(d=>d.includes(keyword));
       const result = [...new Set([...local, ...districts])].slice(0, 8).map(n=>({name:n, district:'', address:''}));
       _acCache[cacheKey] = result;
       return result;
     }
     try {
-      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(key)}&keywords=${encodeURIComponent(keyword)}&city=南京&citylimit=true&types=${encodeURIComponent(poiType)}&offset=8`;
+      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(key)}&keywords=${encodeURIComponent(keyword)}&city=${encodeURIComponent(city)}&citylimit=true&types=${encodeURIComponent(poiType)}&offset=8`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.status === '1' && data.pois) {
@@ -248,7 +296,7 @@ window.LocationMod = (function() {
         _timer = setTimeout(async () => {
           const kw = input.value.trim();
           if (!kw) { container.style.display='none'; return; }
-          const tips = await fetchInputTips(kw, poiType);
+          const tips = await fetchInputTips(input, kw, poiType);
           if (!tips.length) { container.style.display='none'; return; }
           container.innerHTML = tips.map(t => `
             <div class="ac-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--bg-2);font-size:12.5px;" data-name="${t.name}" data-loc="${t.location||''}" data-district="${t.district||''}">
@@ -303,29 +351,43 @@ window.LocationMod = (function() {
   // ===== 通勤分析 =====
   function renderCommute() {
     const exp = Store.getExpectation();
-    const districts = Object.keys(DISTRICT_DATA);
     return `<div class="grid-2">
       <div class="card">
-        <div class="card-title">🚗 输入通勤参数</div>
+        <div class="card-title">${ic('car')} 输入通勤参数</div>
         <div class="form-grid">
-          <div class="form-item full"><label>我的工作地点</label>
-            <input type="text" id="c_work" value="${exp.workplace||''}" placeholder="如：新街口地铁站 / 软件谷" data-autocomplete data-poi-type="${POI_TYPES.work}"></div>
-          <div class="form-item full"><label>伴侣工作地点（可选）</label>
-            <input type="text" id="c_part" value="${exp.partnerWorkplace||''}" placeholder="如：仙林大学城" data-autocomplete data-poi-type="${POI_TYPES.work}"></div>
-          <div class="form-item"><label>房源所在小区</label>
-            <select id="c_district" onchange="LocationMod.setSuggestedCommunity()">
-              ${districts.map(d=>`<option>${d}</option>`).join('')}
-            </select></div>
-          <div class="form-item"><label>或具体小区名</label>
-            <input type="text" id="c_community" placeholder="如：百家湖花园" data-autocomplete data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'c_district')"></div>
-          <div class="form-item full"><label>可接受通勤时长上限：${exp.maxCommuteTime||45} 分钟 <a onclick="App.navigate('expectation')" style="color:var(--primary);cursor:pointer;text-decoration:underline;">修改</a></label></div>
+          <div class="form-item full"><label>${ic('pin',14)} 我的工作地点</label>
+            <div class="loc-row">
+              <div class="cascade-group">${Store.cityCascadeHTML(commute.workCity, 'cw', { onCity: 'LocationMod.setWorkCity(this)' })}</div>
+              <input type="text" id="c_work" value="${exp.workplace||''}" placeholder="如：新街口地铁站 / 软件谷" data-autocomplete data-city="${commute.workCity}" data-poi-type="${POI_TYPES.work}" style="flex:1;min-width:180px;">
+            </div>
+          </div>
+          <div class="form-item full"><label>${ic('heart',14)} 伴侣工作地点（可选）</label>
+            <div class="loc-row">
+              <div class="cascade-group">${Store.cityCascadeHTML(commute.partCity, 'cp', { onCity: 'LocationMod.setPartCity(this)' })}</div>
+              <input type="text" id="c_part" value="${exp.partnerWorkplace||''}" placeholder="如：仙林大学城" data-autocomplete data-city="${commute.partCity}" data-poi-type="${POI_TYPES.work}" style="flex:1;min-width:180px;">
+            </div>
+          </div>
+          <div class="form-item full"><label>${ic('house',14)} 房源所在小区</label>
+            <div class="loc-row">
+              <div class="cascade-group">${Store.cityCascadeHTML(commute.commCity, 'cm', { onCity: 'LocationMod.setCommCity(this)' })}</div>
+              <select id="c_district" onchange="LocationMod.setSuggestedCommunity()" style="flex:1;min-width:110px;">
+                <option value="">请选择区域</option>
+                ${(Store.CITIES[commute.commCity]||[]).map(d=>`<option>${d}</option>`).join('')}
+              </select>
+              <input type="text" id="c_community" placeholder="如：百家湖花园" data-autocomplete data-city="${commute.commCity}" data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'c_district')" style="flex:1.4;min-width:150px;">
+            </div>
+          </div>
         </div>
-        <div style="text-align:right;margin-top:10px;">
-          <button class="btn btn-primary" onclick="LocationMod.calcCommute()">🔍 分析通勤</button>
+        <div class="commute-limit">
+          ${ic('clock',14)} 可接受通勤时长上限 <strong>≤ ${exp.maxCommuteTime||45} 分钟</strong>
+          <a onclick="App.navigate('expectation')">修改</a>
+        </div>
+        <div style="text-align:right;margin-top:14px;">
+          <button class="btn btn-primary" onclick="LocationMod.calcCommute()">${ic('search',15)} 分析通勤</button>
         </div>
       </div>
       <div id="c_result" class="card">
-        <div class="empty-state" style="padding:20px;"><div class="icon">🚗</div>
+        <div class="empty-state" style="padding:20px;"><div class="icon">${ic('car',54)}</div>
           <h4>点击"分析通勤"查看结果</h4>
         </div>
       </div>
@@ -333,8 +395,16 @@ window.LocationMod = (function() {
   }
   function setSuggestedCommunity() {
     const d = document.getElementById('c_district').value;
-    const example = (SEED_HOUSES_FALLBACK() || []).find(h=>h.district===d);
-    if (example) document.getElementById('c_community').value = example.communityName;
+    if (!d) return;
+    const commEl = document.getElementById('c_community');
+    if (!commEl) return;
+    // 输入框已有内容（手动输入或下拉选中）时保留，避免被联动逻辑覆盖/清空
+    if (commEl.value && commEl.value.trim()) return;
+    // 优先从已记录房源中找「当前城市 + 该区域」的真实小区（不再仅限南京示例）
+    const match = Store.getRecords().find(r => r.district === d && (r.city === commute.commCity || (!r.city && Store.getCity() === commute.commCity)));
+    if (match) { commEl.value = match.communityName; return; }
+    // 无记录时兜底提示（可手动输入小区名，高德会自动补全）
+    Utils.toast(`「${commute.commCity} · ${d}」暂无已记录小区，请直接输入小区名（支持智能补全）`, 'info', 2000);
   }
 
   // 输入小区名后，自动通过高德POI搜索推断区域并联动下拉
@@ -345,8 +415,12 @@ window.LocationMod = (function() {
     if (!sel) return;
     const srvKey = getAmapKey().srv;
     if (!srvKey) return;
+    const city = selectId==='c_district' ? commute.commCity
+              : selectId==='f_dist' ? facilityCity
+              : selectId==='s_dist' ? schoolCity
+              : Store.getCity();
     try {
-      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(name)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+      const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}&citylimit=true&types=120200|120300&offset=1`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.status === '1' && data.pois && data.pois[0]) {
@@ -362,21 +436,38 @@ window.LocationMod = (function() {
       }
     } catch(e) {}
   }
-  // 避免依赖，写一个内联的
-  function SEED_HOUSES_FALLBACK() {
-    return [
-      {communityName:'百家湖花园',district:'江宁'},{communityName:'桥北新村',district:'浦口'},
-      {communityName:'仙林湖万达茂',district:'栖霞'},{communityName:'铁心桥龙湖春江郦城',district:'雨花台'},
-      {communityName:'龙江银城花园',district:'鼓楼'},{communityName:'河西南招商雍和府',district:'建邺'},
-      {communityName:'红山新城尚华府',district:'玄武'},{communityName:'大校场金基望樾府',district:'秦淮'},
-      {communityName:'雄州龙池湖畔',district:'六合'}
-    ];
-  }
   async function calcCommute() {
-    const work = (document.getElementById('c_work').value||'').trim() || '新街口';
-    const part = (document.getElementById('c_part').value||'').trim();
-    const district = document.getElementById('c_district').value;
-    const community = (document.getElementById('c_community').value||'').trim() || district+'某小区';
+    try { await _calcCommuteInner(); }
+    catch(err) {
+      // 任何异常都给出可见反馈，避免"点击无反应"
+      console.error('calcCommute err', err);
+      const detail = err && err.stack ? String(err.stack).split('\n')[0] : (String(err) || '未知错误');
+      const rb = document.getElementById('c_result');
+      if (rb) rb.innerHTML = `<div style="padding:16px;background:var(--danger-soft);color:var(--danger);border-radius:10px;">${ic('alert',14)} 通勤分析出错：${detail}<div style="margin-top:6px;font-size:12px;color:var(--text-3);">请稍后重试或检查网络。</div></div>`;
+    }
+  }
+  async function _calcCommuteInner() {
+    const workEl = document.getElementById('c_work');
+    const partEl = document.getElementById('c_part');
+    const distEl = document.getElementById('c_district');
+    const commEl = document.getElementById('c_community');
+    if (!workEl || !distEl || !commEl) {
+      const rb = document.getElementById('c_result');
+      if (rb) rb.innerHTML = `<div style="padding:16px;background:var(--warn-soft);color:var(--warn);border-radius:10px;">${ic('alert',14)} 通勤表单未就绪，请重新进入区位分析页后重试。</div>`;
+      return;
+    }
+    const work = workEl.value.trim() || '新街口';
+    const part = (partEl.value||'').trim();
+    const district = distEl.value;
+    // 未输入小区名时直接用区域名定位（"XX某小区"无法被高德解析，改用区域名提高命中率）
+    const community = commEl.value.trim() || district;
+    if (!community) {
+      Utils.toast('请选择区域或输入房源小区名','warn');
+      // 同时写入结果区，避免 toast 一闪而过导致"无反馈"
+      const rb = document.getElementById('c_result');
+      if (rb) rb.innerHTML = `<div style="padding:16px;background:var(--warn-soft);color:var(--warn);border-radius:10px;">${ic('alert',14)} 请先选择房源所在区域，或输入小区名后再点击分析。</div>`;
+      return;
+    }
     const exp = Store.getExpectation();
     const limit = exp.maxCommuteTime || 45;
     const useReal = amapConfigured();
@@ -384,26 +475,28 @@ window.LocationMod = (function() {
     // 显示加载
     document.getElementById('c_result').innerHTML = `
       <div class="empty-state" style="padding:30px;">
-        <div style="font-size:24px;">${useReal?'🌐':'📊'}</div>
+        <div style="font-size:24px;">${useReal?ic('globe',28):ic('chart',28)}</div>
         <h4>${useReal?'正在调用高德API规划路径...':'计算中...'}</h4>
         <p style="font-size:12.5px;color:var(--text-3);">${useReal?'从 '+community+' 到 '+work+' 的真实驾车/地铁路径':'基于本地模拟数据'}</p>
       </div>`;
 
     let subway, drive, driveDist='', subwayDist='';
     let dataSource = '';
+    // 提升到外层：伴侣通勤部分（if(part) 在 useReal 块外）需要访问坐标
+    let originLoc = null, destLoc = null;
 
     if (useReal) {
       // 真实调用：先地理编码，再路径规划
-      const originLoc = await geocode(community, '南京');
-      const destLoc = await geocode(work, '南京');
+      originLoc = await geocode(community, commute.commCity);
+      destLoc = await geocode(work, commute.workCity);
       if (originLoc && destLoc) {
         const driveRes = await routePlan(originLoc, destLoc, 'driving');
-        const subwayRes = await routePlan(originLoc, destLoc, 'transit');
+        const subwayRes = await routePlan(originLoc, destLoc, 'transit', commute.commCity, commute.workCity);
         drive = driveRes ? driveRes.duration : null;
         subway = subwayRes ? subwayRes.duration : null;
         if (driveRes) driveDist = ` · ${driveRes.distance}km`;
         if (subwayRes) subwayDist = ` · ${subwayRes.distance}km`;
-        dataSource = '🌐 数据来源：高德地图路径规划API（实时）';
+        dataSource = '数据来源：高德地图路径规划API（实时）';
         if (drive == null && subway == null) {
           _renderErr('c_result', '高德路径规划 API 未返回有效路径，请检查 Web 服务 Key 的有效性、配额与权限后重试。', true);
           return;
@@ -424,10 +517,19 @@ window.LocationMod = (function() {
     const driveOK = drive != null && drive <= limit;
     let partHtml = '';
     if (part) {
-      // 伴侣简化：基于已获取的任一路径时长估算
-      const base = subway != null ? subway : (drive != null ? drive : 45);
-      const ps = Math.max(5, base + Math.round(Math.random()*10-5));
-      partHtml = `<div class="r-item"><div class="r-label">💑 伴侣地铁通勤（至${part}）</div><div class="r-value" style="${ps<=limit?'':'color:var(--danger)'}">${ps} 分钟 ${ps<=limit?'✅':'⚠️超出'}</div></div>`;
+      // 伴侣通勤：真实测算 小区 → 伴侣工作地点 的地铁（公交）时长
+      let ps = null;
+      const partLoc = await geocode(part, commute.partCity);
+      if (partLoc && originLoc) {
+        const partRes = await routePlan(originLoc, partLoc, 'transit', commute.commCity, commute.partCity);
+        if (partRes) ps = partRes.duration;
+      }
+      if (ps == null) {
+        // 真实路径不可用时，以已获取的任一路径时长为基础估算（如实标注）
+        const base = subway != null ? subway : (drive != null ? drive : 45);
+        ps = Math.max(5, base + Math.round(Math.random()*10-5));
+      }
+      partHtml = `<div class="r-item"><div class="r-label">${ic('heart',14)} 伴侣地铁通勤（至${part}）</div><div class="r-value" style="${ps<=limit?'':'color:var(--danger)'}">${ps} 分钟 ${ps<=limit?ic('check',13):ic('alert',13)+'超出'}</div></div>`;
     }
 
     let advice, color;
@@ -436,17 +538,17 @@ window.LocationMod = (function() {
     else { advice='两种通勤方式均超出上限，长期居住需考虑时间成本与疲劳度'; color='tag-danger'; }
 
     document.getElementById('c_result').innerHTML = `
-      <div class="calc-result" style="background:linear-gradient(135deg,var(--primary),var(--accent));">
-        <h4>通勤分析结果 ${useReal?'<span style="font-size:11px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:4px;margin-left:6px;">🌐 实时</span>':''}</h4>
+      <div class="calc-result">
+        <h4>通勤分析结果 ${useReal?'<span style="font-size:11px;background:var(--primary-soft);color:var(--primary);padding:2px 8px;border-radius:999px;margin-left:8px;font-weight:600;">'+ic('globe',12)+' 实时</span>':''}</h4>
         <div class="big-num" style="font-size:20px;">${community} → ${work}</div>
         <div class="result-grid">
-          <div class="r-item"><div class="r-label">🟢 地铁（公交+步行）</div><div class="r-value" style="${subwayOK?'':'color:var(--danger)'}">${subway==null?'未获取':subway} 分钟${subwayDist} ${subway==null?'⚠️':(subwayOK?'✅':'⚠️超出')}</div></div>
-          <div class="r-item"><div class="r-label">🚗 自驾</div><div class="r-value" style="${driveOK?'':'color:var(--danger)'}">${drive==null?'未获取':drive} 分钟${driveDist} ${drive==null?'⚠️':(driveOK?'✅':'⚠️超出')}</div></div>
-          <div class="r-item"><div class="r-label">🚴 骑行/公交</div><div class="r-value">${subway==null?'未获取':Math.round(subway*1.2)} 分钟</div></div>
+          <div class="r-item"><div class="r-label">${ic('train',14)} 地铁（公交+步行）</div><div class="r-value" style="${subwayOK?'':'color:var(--danger)'}">${subway==null?'未获取':subway} 分钟${subwayDist} ${subway==null?ic('alert',13):(subwayOK?ic('check',13):ic('alert',13)+'超出')}</div></div>
+          <div class="r-item"><div class="r-label">${ic('car',14)} 自驾</div><div class="r-value" style="${driveOK?'':'color:var(--danger)'}">${drive==null?'未获取':drive} 分钟${driveDist} ${drive==null?ic('alert',13):(driveOK?ic('check',13):ic('alert',13)+'超出')}</div></div>
+          <div class="r-item"><div class="r-label">${ic('compass',14)} 骑行/公交</div><div class="r-value">${subway==null?'未获取':Math.round(subway*1.2)} 分钟</div></div>
           ${partHtml}
         </div>
       </div>
-      <div style="margin-top:14px;"><span class="tag ${color}" style="padding:4px 10px;font-size:12px;">💡 ${advice}</span></div>
+      <div style="margin-top:14px;"><span class="tag ${color}" style="padding:4px 10px;font-size:12px;">${ic('bulb',13)} ${advice}</span></div>
     `;
   }
 
@@ -454,111 +556,229 @@ window.LocationMod = (function() {
   function _renderErr(elId, msg, goConfig) {
     document.getElementById(elId).innerHTML = `
       <div style="border:1px solid var(--danger);background:var(--danger-soft);border-radius:10px;padding:18px;text-align:center;">
-        <div style="font-size:26px;">⚠️</div>
+        <div style="font-size:26px;">${ic('alertCircle',30)}</div>
         <p style="margin:10px 0 14px;font-size:13px;color:var(--text-1);line-height:1.7;">${msg}</p>
-        ${goConfig ? '<button class="btn btn-primary btn-sm" onclick="App.navigate(\'settings\')">⚙️ 前往配置高德 API</button>' : ''}
+        ${goConfig ? '<button class="btn btn-primary btn-sm" onclick="App.navigate(\'settings\')">'+ic('gear',15)+' 前往配置高德 API</button>' : ''}
       </div>`;
   }
-  function applyMapKey() { App.navigate('settings'); }
-
   // ===== 学区查询 =====
   function renderSchool() {
-    const districts = Object.keys(DISTRICT_DATA);
     return `<div class="card">
-      <div class="card-title">🎓 学区查询</div>
+      <div class="card-title">${ic('school')} 学区查询</div>
       <div class="form-grid">
+        <div class="form-item full"><label>查询城市</label>
+          <div class="cascade-group loc-cascade">${Store.cityCascadeHTML(schoolCity, 'sc', { onCity: 'LocationMod.setSchoolCity(this)' })}</div>
+        </div>
         <div class="form-item">
           <label>按板块查询</label>
           <select id="s_dist">
             <option value="">— 选择板块 —</option>
-            ${districts.map(d=>`<option>${d}</option>`).join('')}
+            ${(Store.CITIES[schoolCity]||[]).map(d=>`<option>${d}</option>`).join('')}
           </select>
         </div>
         <div class="form-item">
           <label>或按地点查询（输入后自动识别板块）</label>
-          <input type="text" id="s_comm" placeholder="如：百家湖花园 / 龙江银城花园" data-autocomplete data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'s_dist')">
+          <input type="text" id="s_comm" placeholder="如：百家湖花园 / 龙江银城花园" data-autocomplete data-city="${schoolCity}" data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'s_dist')">
         </div>
       </div>
-      <div style="margin-top:10px;"><button class="btn btn-primary" onclick="LocationMod.querySchool()">🔍 查询学区</button></div>
+      <div style="margin-top:10px;"><button class="btn btn-primary" onclick="LocationMod.querySchool()">${ic('search',15)} 查询学区</button></div>
       <div id="s_result" style="margin-top:14px;"></div>
     </div>`;
   }
   async function querySchool() {
     let dist = document.getElementById('s_dist').value;
     const commInput = document.getElementById('s_comm').value.trim();
-    let commName = commInput;
+    const commName = commInput;
     if (!dist && !commName) { Utils.toast('请选择板块或输入小区名','warn'); return; }
+    // 有小区名无板块 → 通过POI识别板块；识别失败明确提示，不再静默用首个板块导致张冠李戴
     if (!dist && commName) {
-      // 尝试通过POI搜索推断区域
       const srvKey = getAmapKey().srv;
       if (srvKey) {
         try {
-          const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(commName)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+          const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(commName)}&city=${encodeURIComponent(schoolCity)}&citylimit=true&types=120200|120300&offset=1`;
           const res = await fetch(url);
           const data = await res.json();
           if (data.status === '1' && data.pois && data.pois[0]) {
-            dist = (data.pois[0].adname||'').replace('区','').replace('县','');
+            const ad = (data.pois[0].adname||'').replace('区','').replace('县','');
+            const dists = Store.CITIES[schoolCity] || [];
+            const matched = dists.includes(ad) ? ad : dists.find(d => d === ad+'区' || d === ad+'县' || d === ad+'市');
+            if (matched) dist = matched;
           }
         } catch(e) {}
       }
-      if (!dist) dist = '江宁'; // 兜底
+      if (!dist) { Utils.toast(`未能识别「${commName}」在${schoolCity}的板块，请手动选择板块后查询`,'warn'); return; }
     }
-    const d = DISTRICT_DATA[dist] || DISTRICT_DATA['江宁'];
-    // 模拟评级
-    const rate = ['顶级','优秀','良好','较好','一般'][Math.min(4, ['鼓楼','玄武','建邺','秦淮','栖霞','雨花台','江宁','浦口','六合','溧水','高淳'].indexOf(dist))];
-    const rateColor = ['顶级','优秀'].includes(rate)?'tag-success':(rate==='良好'?'tag-primary':'tag-warn');
+    const resultBox = document.getElementById('s_result');
+    // ① 真实学校数据（高德 API，全国任意城市可用）
+    const real = await queryRealSchools(schoolCity, dist, commName);
+    if (real && real.schools && real.schools.length) {
+      resultBox.innerHTML = renderRealSchools(real, schoolCity, dist, commName);
+      return;
+    }
+    // ② 真实数据不可用 → 降级为静态参考数据（目前仅南京收录板块概况）
+    const dInfo = DISTRICT_DATA[dist];
+    if (dInfo) {
+      let facilityDistHtml = '';
+      if (commName) facilityDistHtml = await fetchFacilityDistances(commName);
+      resultBox.innerHTML = `
+        <div style="background:#fff;border:1px solid var(--border-light);border-radius:10px;padding:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="font-size:16px;">${ic('pin',14)} ${dist} 学区概况${commName?` · ${commName}`:''}</h3>
+            <span class="tag tag-warn tag-sm">${ic('alert',12)} 静态参考数据</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div style="padding:10px;background:var(--primary-soft);border-radius:8px;">
+              <h4 style="font-size:13px;color:var(--primary);margin-bottom:4px;">${ic('school',14)} 小学学区</h4>
+              <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${dInfo.school}</p>
+            </div>
+            <div style="padding:10px;background:var(--accent-soft);border-radius:8px;">
+              <h4 style="font-size:13px;color:var(--accent);margin-bottom:4px;">${ic('train',14)} 交通配套</h4>
+              <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${dInfo.subway}</p>
+            </div>
+            <div style="padding:10px;background:var(--success-soft);border-radius:8px;">
+              <h4 style="font-size:13px;color:var(--success);margin-bottom:4px;">${ic('hospital',14)} 医疗配套</h4>
+              <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${dInfo.hospital}</p>
+            </div>
+            <div style="padding:10px;background:var(--warn-soft);border-radius:8px;">
+              <h4 style="font-size:13px;color:var(--warn);margin-bottom:4px;">${ic('shop',14)} 商业配套</h4>
+              <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${dInfo.mall}</p>
+            </div>
+          </div>
+          <div style="margin-top:10px;">
+            <h4 style="font-size:13px;margin:10px 0 6px;">${ic('sun',14)} 休闲配套</h4>
+            <p style="font-size:12.5px;color:var(--text-2);">${dInfo.park}</p>
+            <h4 style="font-size:13px;margin:10px 0 6px;">${ic('building',14)} 产业支撑</h4>
+            <p style="font-size:12.5px;color:var(--text-2);">${dInfo.industry}</p>
+            <h4 style="font-size:13px;margin:10px 0 6px;">${ic('trend',14)} 房价基准 & 升值潜力</h4>
+            <p style="font-size:12.5px;color:var(--text-2);">二手房挂牌基准价约 <strong style="color:var(--accent)">${dInfo.basePrice.toLocaleString()}元/㎡</strong>，综合升值潜力评估：<strong class="tag tag-success tag-sm">${dInfo.potential}</strong></p>
+          </div>
+          ${facilityDistHtml}
+        </div>`;
+      return;
+    }
+    // ③ 两者均无 → 引导配置 Key
+    resultBox.innerHTML = `
+      <div class="card" style="border:1px solid var(--warn);">
+        <div style="text-align:center;padding:24px;">
+          <div style="font-size:26px;">${ic('map',30)}</div>
+          <h4 style="margin:10px 0;">「${schoolCity} · ${dist}」暂未查询到学校数据</h4>
+          <p style="font-size:12.5px;color:var(--text-3);line-height:1.8;">${getAmapKey().srv ? '高德接口未返回学校信息，请更换板块/小区名后重试。' : '请先在【系统设置】中配置高德 Web 服务 Key，即可查询全国任意城市的真实学校分布。'}</p>
+        </div>
+      </div>`;
+  }
 
-    // 如果有具体小区名，查询周边配套距离
-    let facilityDistHtml = '';
+  // 高德真实学校数据：以小区/板块为中心，拉取周边幼儿园/小学/中学/大学/职校（3KM）
+  // 高德 POI 的"中学"未细分初/高中，按名称关键词进一步分类
+  function classifySchoolType(s) {
+    const t = s.type;
+    if (t !== '中学') return t || '学校';
+    const n = s.name;
+    if (/九年一贯制|九年制/.test(n)) return '九年一贯制';
+    if (/初中/.test(n)) return '初中';
+    if (/高中|高级中学|完中|完全中学/.test(n)) return '高中';
+    return '中学';
+  }
+  async function queryRealSchools(city, district, commName) {
+    const key = getAmapKey().srv;
+    if (!key) return null;
+    let center = null;
+    const centerName = commName || `${city}${district||''}`;
     if (commName) {
-      facilityDistHtml = await fetchFacilityDistances(commName);
+      try {
+        const url = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(key)}&keywords=${encodeURIComponent(commName)}&city=${encodeURIComponent(city)}&citylimit=true&types=120200|120300&offset=1`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.status === '1' && data.pois && data.pois[0] && data.pois[0].location) center = data.pois[0].location;
+      } catch(e) {}
     }
-
-    document.getElementById('s_result').innerHTML = `
-      <div style="background:#fff;border:1px solid var(--border-light);border-radius:10px;padding:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <h3 style="font-size:16px;">📍 ${dist} 学区概况${commName?` · ${commName}`:''}</h3>
-          <span class="tag ${rateColor} tag-sm">学区评级：${rate}</span>
+    if (!center && district) center = await geocode(`${city}${district}`, city);
+    if (!center) return { centerName, schools: [] };
+    try {
+      const sUrl = `https://restapi.amap.com/v3/place/around?key=${encodeURIComponent(key)}&location=${encodeURIComponent(center)}&types=141201|141202|141203|141204|141205&radius=3000&offset=20&sortrule=distance&extensions=base`;
+      const sRes = await fetch(sUrl);
+      const sData = await sRes.json();
+      if (sData.status === '1' && sData.pois) {
+        // 高德 place/around 返回的中文三级类型，如 "科教文化服务;学校;幼儿园"，取最后一段匹配
+        const typeName = {
+          '幼儿园':'幼儿园', '小学':'小学',
+          '中学':'中学', '初中':'初中', '高中':'高中',
+          '高等院校':'大学', '大学':'大学',
+          '职业学校':'职校', '职业技术学校':'职校', '职业技术学院':'职校', '中等专业学校':'职校',
+          '成人教育':'学校', '特殊教育学校':'学校', '学校':'学校'
+        };
+        const schools = sData.pois.map(p => {
+          const t = (p.type||'').split(';');
+          const s = {
+            name: p.name,
+            type: typeName[t[t.length-1]] || '学校',
+            address: p.address||'',
+            distance: Math.round(Number(p.distance)||0)
+          };
+          s.category = classifySchoolType(s);
+          return s;
+        });
+        return { centerName, schools };
+      }
+    } catch(e) { console.error('school around err', e); }
+    return { centerName, schools: [] };
+  }
+  // 渲染真实学校列表：按 幼儿园/小学/初中/高中/大学 等分类分组标记
+  function renderRealSchools(real, city, dist, commName) {
+    const list = real.schools;
+    // 分类展示顺序与对应标签色（幼儿园橙 / 小学蓝 / 初中绿 / 高中青 / 大学紫，其余灰）
+    const CATS = [
+      ['幼儿园', 'tag-warn'],
+      ['小学',   'tag-primary'],
+      ['初中',   'tag-success'],
+      ['九年一贯制', 'tag-primary'],
+      ['高中',   'tag-high'],
+      ['中学',   ''],
+      ['大学',   'tag-college'],
+      ['职校',   ''],
+      ['学校',   '']
+    ];
+    const groups = {};
+    list.forEach(s => { const g = s.category; (groups[g] = groups[g] || []).push(s); });
+    const stats = CATS.filter(([c]) => groups[c]).map(([c]) => `${c} ${groups[c].length}`).join(' · ');
+    const fmtDist = d => d < 1000 ? d + 'm' : (d/1000).toFixed(1) + 'km';
+    const body = CATS.map(([cat, tag]) => {
+      const arr = groups[cat];
+      if (!arr) return '';
+      return `<div style="margin-top:12px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <strong style="font-size:13px;color:var(--text-1);">${ic('school',14)} ${cat}</strong>
+          <span class="tag tag-sm ${tag}">${arr.length} 所</span>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div style="padding:10px;background:var(--primary-soft);border-radius:8px;">
-            <h4 style="font-size:13px;color:var(--primary);margin-bottom:4px;">🏫 小学学区</h4>
-            <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${d.school}</p>
-          </div>
-          <div style="padding:10px;background:var(--accent-soft);border-radius:8px;">
-            <h4 style="font-size:13px;color:var(--accent);margin-bottom:4px;">🚇 交通配套</h4>
-            <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${d.subway}</p>
-          </div>
-          <div style="padding:10px;background:var(--success-soft);border-radius:8px;">
-            <h4 style="font-size:13px;color:var(--success);margin-bottom:4px;">🏥 医疗配套</h4>
-            <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${d.hospital}</p>
-          </div>
-          <div style="padding:10px;background:var(--warn-soft);border-radius:8px;">
-            <h4 style="font-size:13px;color:var(--warn);margin-bottom:4px;">🛍️ 商业配套</h4>
-            <p style="font-size:12.5px;color:var(--text-2);line-height:1.8;">${d.mall}</p>
-          </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          ${arr.slice(0, 8).map(s => `<div style="padding:9px 10px;background:var(--bg-2);border-radius:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+              <strong style="font-size:12.5px;color:var(--text-1);">${s.name}</strong>
+              <span class="tag tag-sm ${tag}">${s.category}</span>
+            </div>
+            <div style="font-size:11.5px;color:var(--text-3);margin-top:3px;">${fmtDist(s.distance)}${s.address ? ' · ' + s.address : ''}</div>
+          </div>`).join('')}
         </div>
-        <div style="margin-top:10px;">
-          <h4 style="font-size:13px;margin:10px 0 6px;">🌳 休闲配套</h4>
-          <p style="font-size:12.5px;color:var(--text-2);">${d.park}</p>
-          <h4 style="font-size:13px;margin:10px 0 6px;">🏭 产业支撑</h4>
-          <p style="font-size:12.5px;color:var(--text-2);">${d.industry}</p>
-          <h4 style="font-size:13px;margin:10px 0 6px;">📈 房价基准 & 升值潜力</h4>
-          <p style="font-size:12.5px;color:var(--text-2);">二手房挂牌基准价约 <strong style="color:var(--accent)">${d.basePrice.toLocaleString()}元/㎡</strong>，综合升值潜力评估：<strong class="tag tag-success tag-sm">${d.potential}</strong></p>
-        </div>
-        ${facilityDistHtml}
+      </div>`;
+    }).join('');
+    return `<div style="background:#fff;border:1px solid var(--border-light);border-radius:10px;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <h3 style="font-size:16px;">${ic('pin',14)} ${city}${dist?' · '+dist:''} 周边学校（3KM）${commName?` · ${commName}`:''}</h3>
+        <span class="tag tag-success tag-sm">${ic('globe',12)} 高德实时数据</span>
       </div>
-    `;
+      <p style="font-size:12px;color:var(--text-3);">共 ${list.length} 所${stats ? '：' + stats : ''}</p>
+      ${body}
+      <p style="font-size:11.5px;color:var(--text-3);margin-top:12px;">${ic('alert',13)} 学区划片以当地教育局当年公示为准，本结果为周边学校分布，不构成划片结论。</p>
+    </div>`;
   }
 
   // 查询小区到周边配套设施的距离
   async function fetchFacilityDistances(commName) {
     const srvKey = getAmapKey().srv;
-    if (!srvKey) return '<div style="margin-top:14px;padding:10px;background:var(--bg-2);border-radius:8px;font-size:12px;color:var(--text-3);">📌 配置高德API Key后可查询小区到周边配套设施的精确距离</div>';
+    if (!srvKey) return '<div style="margin-top:14px;padding:10px;background:var(--bg-2);border-radius:8px;font-size:12px;color:var(--text-3);">'+ic('pin',13)+' 配置高德API Key后可查询小区到周边配套设施的精确距离</div>';
     // 先获取小区坐标
     let commLoc = null;
     try {
-      const geoUrl = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(commName)}&city=南京&citylimit=true&types=120200|120300&offset=1`;
+      const geoUrl = `https://restapi.amap.com/v3/place/text?key=${encodeURIComponent(srvKey)}&keywords=${encodeURIComponent(commName)}&city=${encodeURIComponent(schoolCity)}&citylimit=true&types=120200|120300&offset=1`;
       const geoRes = await fetch(geoUrl);
       const geoData = await geoRes.json();
       if (geoData.status === '1' && geoData.pois && geoData.pois[0] && geoData.pois[0].location) {
@@ -568,11 +788,11 @@ window.LocationMod = (function() {
     if (!commLoc) return '';
     // 搜索周边各类配套
     const facilityTypes = [
-      { label:'🏫 最近学校', type:'141200|141205', icon:'🏫' },
-      { label:'🏥 最近医院', type:'090100', icon:'🏥' },
-      { label:'🛍️ 最近商场', type:'060100', icon:'🛍️' },
-      { label:'🚇 最近地铁站', type:'150500', icon:'🚇' },
-      { label:'🌳 最近公园', type:'110101', icon:'🌳' },
+      { label:'最近学校', type:'141200|141205', icon:'school' },
+      { label:'最近医院', type:'090100', icon:'hospital' },
+      { label:'最近商场', type:'060100', icon:'shop' },
+      { label:'最近地铁站', type:'150500', icon:'train' },
+      { label:'最近公园', type:'110101', icon:'sun' },
     ];
     const results = await Promise.all(facilityTypes.map(async ft => {
       try {
@@ -592,11 +812,11 @@ window.LocationMod = (function() {
     if (!valid.length) return '';
     return `
       <div style="margin-top:14px;padding:12px;background:var(--bg-2);border-radius:8px;">
-        <h4 style="font-size:13px;color:var(--text-1);margin-bottom:8px;">📏 ${commName} 周边配套距离</h4>
+        <h4 style="font-size:13px;color:var(--text-1);margin-bottom:8px;">${ic('ruler',14)} ${commName} 周边配套距离</h4>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
           ${valid.map(r => `
             <div style="padding:8px 10px;background:#fff;border-radius:6px;border:1px solid var(--border-light);">
-              <div style="font-size:12px;color:var(--text-3);">${r.label}</div>
+              <div style="font-size:12px;color:var(--text-3);">${ic(r.icon,13)} ${r.label}</div>
               <div style="font-size:13px;font-weight:600;color:var(--text-1);margin:2px 0;">${r.name}</div>
               <div style="font-size:11.5px;color:var(--text-3);">
                 <span style="color:var(--primary);font-weight:600;">${r.dist < 1000 ? r.dist+'m' : (r.dist/1000).toFixed(1)+'km'}</span>
@@ -610,32 +830,58 @@ window.LocationMod = (function() {
   }
 
   // ===== 周边配套 =====
+  // 判断房源记录所属城市（兼容旧数据无 city 字段，按区域反查）
+  function recCityOf(r) {
+    if (r && r.city && Store.CITIES[r.city]) return r.city;
+    if (!r) return '';
+    for (const c in Store.CITIES) {
+      if ((Store.CITIES[c]||[]).includes(r.district)) return c;
+    }
+    return '';
+  }
+  // 周边配套示例：优先取「当前城市」已记录小区，不再硬编码南京小区
+  function facilityExamples(city) {
+    const names = [...new Set(Store.getRecords()
+      .filter(r => recCityOf(r) === city && r.communityName)
+      .map(r => r.communityName))].slice(0, 4);
+    if (names.length) {
+      return `<p style="font-size:12.5px;color:var(--text-3);margin:8px 0;">${ic('bulb',13)} 快速示例（${city}已记录小区）：
+        ${names.map(n=>`<a style="color:var(--primary);cursor:pointer;margin-right:12px;" onclick="document.getElementById('f_comm').value='${n}';LocationMod.showFacility();">${n}</a>`).join('')}
+      </p>`;
+    }
+    return `<p style="font-size:12.5px;color:var(--text-3);margin:8px 0;">${ic('bulb',13)} 提示：${city}暂无已记录小区，可直接在上方输入小区名（支持智能补全），或在【房源记录】中新增后一键示例。</p>`;
+  }
   function renderFacility() {
     return `<div class="card">
-      <div class="card-title">🏥 周边配套地图（以小区为中心3KM范围）</div>
+      <div class="card-title">${ic('hospital')} 周边配套地图（以小区为中心3KM范围）</div>
       <div class="form-grid">
-        <div class="form-item"><label>小区名称</label><input id="f_comm" placeholder="输入小区名或点击下方示例" data-autocomplete data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'f_dist')"></div>
+        <div class="form-item full"><label>查询城市</label>
+          <div class="cascade-group loc-cascade">${Store.cityCascadeHTML(facilityCity, 'fc', { onCity: 'LocationMod.setFacilityCity(this)' })}</div>
+        </div>
+        <div class="form-item"><label>小区名称</label><input id="f_comm" placeholder="输入小区名或点击下方示例" data-autocomplete data-city="${facilityCity}" data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'f_dist')"></div>
         <div class="form-item"><label>所在区域</label>
           <select id="f_dist">
-            ${Object.keys(DISTRICT_DATA).map(d=>`<option>${d}</option>`).join('')}
+            <option value="">请选择</option>
+            ${(Store.CITIES[facilityCity] || Store.getDistricts()).map(d=>`<option>${d}</option>`).join('')}
           </select>
         </div>
       </div>
-      <p style="font-size:12.5px;color:var(--text-3);margin:8px 0;">💡 示例：
-        ${['百家湖花园','桥北新村','仙林湖万达茂','龙江银城花园'].map(n=>`<a style="color:var(--primary);cursor:pointer;margin-right:12px;" onclick="document.getElementById('f_comm').value='${n}';LocationMod.showFacility();">${n}</a>`).join('')}
-      </p>
-      <button class="btn btn-primary btn-sm" onclick="LocationMod.showFacility()">🗺️ 显示配套</button>
+      ${facilityExamples(facilityCity)}
+      <button class="btn btn-primary btn-sm" onclick="LocationMod.showFacility()">${ic('map',15)} 显示配套</button>
       <div id="f_result" style="margin-top:14px;"></div>
     </div>`;
   }
   async function showFacility() {
-    const comm = document.getElementById('f_comm').value.trim() || '示例小区';
+    const commInput = document.getElementById('f_comm').value.trim();
     const dist = document.getElementById('f_dist').value;
     const useReal = amapConfigured();
+    // 搜索中心：优先小区名 → 所选区域 → 所选城市（支持直接按区域/城市查询周边配套）
+    const searchKey = commInput || (dist ? facilityCity + dist : facilityCity);
+    const comm = commInput || (dist ? `${facilityCity}·${dist}` : facilityCity);
 
     document.getElementById('f_result').innerHTML = `
       <div class="empty-state" style="padding:30px;">
-        <div style="font-size:24px;">${useReal?'🌐':'🏥'}</div>
+        <div style="font-size:24px;">${useReal?ic('globe',28):ic('hospital',28)}</div>
         <h4>${useReal?'正在搜索周边配套...':'加载中...'}</h4>
       </div>`;
 
@@ -644,34 +890,51 @@ window.LocationMod = (function() {
     let allPois = [];      // 所有 POI（含坐标），供地图标注
 
     if (useReal) {
-      centerLoc = await geocode(comm, '南京');
+      centerLoc = await geocode(searchKey, facilityCity);
+      if (!centerLoc && dist) centerLoc = await geocode(dist, facilityCity); // 区域名兜底再试
       if (!centerLoc) {
         _renderErr('f_result', '小区地址解析失败：请确认小区名正确，且高德 Web 服务 Key 有效。', true);
         return;
       }
-      // 高德 POI 类型码：地铁站150500/医院090100/超市060100/学校141200/商场060100/公园110100/银行160100/餐饮050000
-      const categories = [
-        { cat:'🚇 地铁站', types:'150500', color:'#1677FF', icon:'metro' },
-        { cat:'🏥 医院/诊所', types:'090100', color:'#F5222D', icon:'hospital' },
-        { cat:'🛒 商超/菜场', types:'060101,060400', color:'#FA8C16', icon:'cart' },
-        { cat:'🎓 学校/幼儿园', types:'141200,141205', color:'#722ED1', icon:'school' },
-        { cat:'🛍️ 商场/影院', types:'060100,080600', color:'#EB2F96', icon:'mall' },
-        { cat:'🌳 公园/绿地', types:'110101', color:'#52C41A', icon:'park' },
-        { cat:'🏦 银行/ATM', types:'160100', color:'#13C2C2', icon:'bank' },
-      ];
-      const results = await Promise.all(categories.map(async c => {
-        const pois = await searchAround(centerLoc, c.types, 3000);
-        // 保留坐标供地图标注
+      // 商场类按 p.type 中文三级格式细分（购物中心/百货商场/电影院…），sub 返回细分标签
+      const subMall = pois => {
+        const cnt = {};
         pois.forEach(p => {
-          if (p.location) allPois.push({ ...p, cat: c.cat, color: c.color });
+          const leaf = ((p.type||'').split(';').pop()||'').trim();
+          if (leaf) cnt[leaf] = (cnt[leaf]||0) + 1;
         });
-        return {
-          category: c.cat,
-          count: pois.length,
-          names: pois.slice(0,5).map(p => `${p.name}(${Math.round(Number(p.distance)||0)}m)`),
-          distance: '<3km'
-        };
-      }));
+        return Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${v}`).join(' · ');
+      };
+      // 园区/企业：公司企业170000（公司170100/知名企业170200）+ 商务住宅120100（产业园区/写字楼，真实API实测120301等码无数据）
+      const categories = [
+        { cat:'地铁站', types:'150500', color:'#1677FF', icon:'train' },
+        { cat:'医院/诊所', types:'090100', color:'#F5222D', icon:'hospital' },
+        { cat:'商超/菜场', types:'060101|060400', color:'#FA8C16', icon:'shop' },
+        { cat:'学校/幼儿园', types:'141200|141205', color:'#722ED1', icon:'school' },
+        { cat:'商场/影院', types:'060100|080600', color:'#EB2F96', icon:'bag', sub: subMall },
+        { cat:'公园/绿地', types:'110101', color:'#52C41A', icon:'sun' },
+        { cat:'银行/ATM', types:'160100', color:'#13C2C2', icon:'bank' },
+        { cat:'园区/企业', types:'170100|170200|120100', color:'#1D39C4', icon:'building' },
+      ];
+      // 分批并发请求（高德 QPS 限流：8 个并发会被 CUQPS 拒绝导致卡片随机缺失，每批 3 个）
+      const results = [];
+      for (let i = 0; i < categories.length; i += 3) {
+        const batch = await Promise.all(categories.slice(i, i + 3).map(async c => {
+          const pois = await searchAround(centerLoc, c.types, 3000);
+          // 保留坐标供地图标注
+          pois.forEach(p => {
+            if (p.location) allPois.push({ ...p, cat: c.cat, color: c.color });
+          });
+          return {
+            category: c.cat,
+            count: pois.length,
+            names: pois.slice(0,5).map(p => `${p.name}(${Math.round(Number(p.distance)||0)}m)`),
+            distance: '<3km',
+            sub: c.sub ? c.sub(pois) : ''
+          };
+        }));
+        results.push(...batch);
+      }
       data = results.filter(r => r.count > 0);
       if (!data.length) {
         _renderErr('f_result', '高德周边搜索未返回任何 POI 结果，请确认小区名书写正确或稍后重试。', true);
@@ -688,23 +951,23 @@ window.LocationMod = (function() {
     const hasJsKey = !!(localStorage.getItem('k_amap_js')||'').trim();
     const mapPlaceholder = hasJsKey
       ? `<div id="facilityMap" style="height:380px;border-radius:8px;overflow:hidden;border:1px solid var(--border-light);background:#f5f5f5;position:relative;">
-           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-3);font-size:13px;">🗺️ 地图加载中...</div>
+           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-3);font-size:13px;">${ic('map',13)} 地图加载中...</div>
          </div>`
-      : `<div style="height:280px;background:linear-gradient(135deg,#EFF6FF,#FEF3C7);border-radius:8px;margin:10px 0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;position:relative;overflow:hidden;">
-           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:120px;border-radius:50%;background:rgba(30,58,138,0.08);border:2px dashed rgba(30,58,138,0.3);"></div>
-           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:240px;height:240px;border-radius:50%;background:rgba(30,58,138,0.04);border:2px dashed rgba(30,58,138,0.15);"></div>
-           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:360px;height:360px;border-radius:50%;background:rgba(30,58,138,0.02);border:1px dashed rgba(30,58,138,0.1);"></div>
+      : `<div style="height:280px;background:linear-gradient(135deg,#F0F7FF,#FFF7E6);border-radius:8px;margin:10px 0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;position:relative;overflow:hidden;">
+           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:120px;border-radius:50%;background:rgba(0,113,227,0.08);border:2px dashed rgba(0,113,227,0.3);"></div>
+           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:240px;height:240px;border-radius:50%;background:rgba(0,113,227,0.04);border:2px dashed rgba(0,113,227,0.15);"></div>
+           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:360px;height:360px;border-radius:50%;background:rgba(0,113,227,0.02);border:1px dashed rgba(0,113,227,0.1);"></div>
            <div style="position:relative;z-index:1;text-align:center;">
-             <div style="font-size:28px;">🏠</div>
+             <div style="font-size:28px;">${ic('house',30)}</div>
              <strong>${comm}</strong><br/>
-             <small>📍 配置高德 Key 后显示交互式地图</small>
+             <small>${ic('pin',13)} 配置高德 Key 后显示交互式地图</small>
            </div>
          </div>`;
 
     document.getElementById('f_result').innerHTML = `
       <div style="border:1px solid var(--border-light);border-radius:10px;padding:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-          <h3 style="font-size:15px;">📍 ${comm}${dist?' · '+dist:''} 3KM生活圈 ${useReal?'<span style="font-size:11px;background:var(--success-soft);color:var(--success);padding:2px 6px;border-radius:4px;margin-left:6px;">🌐 实时</span>':''}</h3>
+          <h3 style="font-size:15px;">${ic('pin',14)} ${comm}${dist?' · '+dist:''} 3KM生活圈 ${useReal?'<span style="font-size:11px;background:var(--success-soft);color:var(--success);padding:2px 6px;border-radius:4px;margin-left:6px;">'+ic('globe',12)+' 实时</span>':''}</h3>
           <div style="display:flex;align-items:center;gap:8px;">
             配套便利度：${Utils.matchRingHTML(totalScore)}
           </div>
@@ -716,6 +979,7 @@ window.LocationMod = (function() {
               <strong style="font-size:12.5px;">${f.category}</strong>
               <span class="tag tag-sm tag-success">${f.count}处</span>
             </div>
+            ${f.sub ? `<div style="font-size:11px;color:var(--primary);margin-top:3px;">${f.sub}</div>` : ''}
             <div style="font-size:11.5px;color:var(--text-2);margin-top:4px;line-height:1.7;">${f.names.join(' · ')}</div>
             <div style="font-size:11px;color:var(--primary);margin-top:2px;">覆盖范围 ${f.distance}</div>
           </div>`).join('')}
@@ -731,7 +995,7 @@ window.LocationMod = (function() {
         console.warn('地图组件加载失败:', e);
         const mapBox = document.getElementById('facilityMap');
         if (mapBox) {
-          mapBox.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-3);">⚠️ 地图加载失败：${e.message}<br/>可改用静态图：<a href="${staticMapUrl(centerLoc)}" target="_blank">查看小区位置卫星图</a></div>`;
+          mapBox.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-3);">${ic('alert',14)} 地图加载失败：${e.message}<br/>可改用静态图：<a href="${staticMapUrl(centerLoc)}" target="_blank">查看小区位置卫星图</a></div>`;
         }
       }
     }
@@ -739,38 +1003,48 @@ window.LocationMod = (function() {
 
   // ===== 距离测算（小区 → 任意目标：商场/医院/学校/地铁） =====
   function renderDistance() {
-    const records = Store.getRecords();
+    // 快速选择只展示「起点城市」的已记录房源，示例也按当前城市生成
+    const records = Store.getRecords().filter(r => recCityOf(r) === distCities.fromCity);
+    const fromEx = records[0] ? records[0].communityName : `${distCities.fromCity}市中心`;
+    const fromEx2 = records[1] ? records[1].communityName : '输入小区名';
+    const toEx = `${distCities.toCity}市中心`;
     const html = `
       <div class="card">
-        <div class="card-title">📏 距离测算（小区 → 任意目标）</div>
+        <div class="card-title">${ic('ruler')} 距离测算（小区 → 任意目标）</div>
         <div class="form-grid">
           <div class="form-item full"><label>起点（小区）</label>
-            <input type="text" id="d_from" placeholder="如：百家湖花园 / 龙江银城花园" data-autocomplete data-poi-type="${POI_TYPES.community}">
+            <div class="loc-row">
+              <div class="cascade-group">${Store.cityCascadeHTML(distCities.fromCity, 'df', { onCity: 'LocationMod.setFromCity(this)' })}</div>
+              <input type="text" id="d_from" placeholder="如：${fromEx} / ${fromEx2}" data-autocomplete data-city="${distCities.fromCity}" data-poi-type="${POI_TYPES.community}" style="flex:1;min-width:180px;">
+            </div>
           </div>
           <div class="form-item full"><label>终点（商场/医院/学校/地铁...）</label>
-            <input type="text" id="d_to" placeholder="如：景枫KINGMO / 鼓楼医院 / 仙林小学" data-autocomplete data-poi-type="">
+            <div class="loc-row">
+              <div class="cascade-group">${Store.cityCascadeHTML(distCities.toCity, 'dt', { onCity: 'LocationMod.setToCity(this)' })}</div>
+              <input type="text" id="d_to" placeholder="如：${toEx} / 万达广场 / 人民医院 / 火车站" data-autocomplete data-city="${distCities.toCity}" data-poi-type="" style="flex:1;min-width:180px;">
+            </div>
           </div>
           <div class="form-item"><label>出行方式</label>
             <select id="d_mode">
-              <option value="driving">🚗 驾车</option>
-              <option value="walking" selected>🚶 步行</option>
-              <option value="transit">🚇 公交+地铁</option>
-              <option value="bicycling">🚴 骑行</option>
+              <option value="driving">驾车</option>
+              <option value="walking" selected>步行</option>
+              <option value="transit">公交+地铁</option>
+              <option value="bicycling">骑行</option>
             </select>
           </div>
           <div class="form-item" style="display:flex;align-items:flex-end;">
-            <button class="btn btn-primary" onclick="LocationMod.calcDistance()">🔍 计算距离</button>
+            <button class="btn btn-primary" onclick="LocationMod.calcDistance()">${ic('search',15)} 计算距离</button>
           </div>
         </div>
         ${records.length ? `
           <div style="margin-top:12px;padding:10px;background:var(--bg-2);border-radius:6px;font-size:12.5px;">
-            <strong style="color:var(--text-2);">📌 快速选择已记录房源作为起点：</strong>
+            <strong style="color:var(--text-2);">${ic('pin',13)} 快速选择已记录房源作为起点（${distCities.fromCity}）：</strong>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
               ${records.slice(0,6).map(r=>`<span class="tag tag-sm" style="cursor:pointer;background:var(--primary-soft);color:var(--primary);" onclick="document.getElementById('d_from').value='${r.communityName}';">${r.communityName}</span>`).join('')}
             </div>
           </div>` : ''}
         <div id="d_result" style="margin-top:14px;">
-          <div class="empty-state" style="padding:24px;"><div class="icon">📏</div>
+          <div class="empty-state" style="padding:24px;"><div class="icon">${ic('ruler',54)}</div>
             <h4>输入起点和终点开始测算</h4>
             <p>支持小区→商场、小区→医院、小区→学校等多种场景的真实距离与时间计算。</p>
           </div>
@@ -792,11 +1066,18 @@ window.LocationMod = (function() {
     const from = document.getElementById('d_from').value.trim();
     const to = document.getElementById('d_to').value.trim();
     const mode = document.getElementById('d_mode').value;
-    if (!from || !to) { Utils.toast('请填写起点和终点','warn'); return; }
+    if (!from || !to) {
+      Utils.toast('请填写起点和终点','warn');
+      const rb = document.getElementById('d_result');
+      if (rb) rb.innerHTML = `<div style="padding:16px;background:var(--warn-soft);color:var(--warn);border-radius:10px;">${ic('alert',14)} 请先填写起点和终点。</div>`;
+      return;
+    }
     const useReal = amapConfigured();
     const resultBox = document.getElementById('d_result');
+    // 与路径 API 请求并行预加载高德 SDK，缩短地图连线渲染等待
+    const sdkPromise = (localStorage.getItem('k_amap_js')||'').trim() ? loadAmapSDK() : Promise.resolve(null);
 
-    resultBox.innerHTML = `<div class="empty-state" style="padding:30px;"><div style="font-size:24px;">${useReal?'🌐':'📏'}</div>
+    resultBox.innerHTML = `<div class="empty-state" style="padding:30px;"><div style="font-size:24px;">${useReal?ic('globe',28):ic('ruler',28)}</div>
       <h4>${useReal?'正在计算路径...':'计算中...'}</h4>
       <p style="font-size:12.5px;color:var(--text-3);">${from} → ${to}（${mode==='driving'?'驾车':mode==='walking'?'步行':mode==='transit'?'公交':mode==='bicycling'?'骑行':'-'}）</p></div>`;
 
@@ -804,19 +1085,19 @@ window.LocationMod = (function() {
       // 未配置高德 Key：不做本地估算模拟，提示前往配置
       resultBox.innerHTML = `
         <div style="border:1px solid var(--danger);background:var(--danger-soft);border-radius:10px;padding:18px;text-align:center;">
-          <div style="font-size:26px;">⚠️</div>
+          <div style="font-size:26px;">${ic('alertCircle',30)}</div>
           <p style="margin:10px 0 14px;font-size:13px;line-height:1.7;">未配置高德 Web 服务 Key，无法进行真实距离测算。<br/>请先在设置中配置后重试。</p>
-          <button class="btn btn-primary btn-sm" onclick="App.navigate('settings')">⚙️ 前往配置高德 API</button>
+          <button class="btn btn-primary btn-sm" onclick="App.navigate('settings')">${ic('gear',15)} 前往配置高德 API</button>
         </div>`;
       return;
     }
 
     // 真实调用：地理编码 + 路径规划
-    const originLoc = await geocode(from, '南京');
-    const destLoc = await geocode(to, '南京');
+    const originLoc = await geocode(from, distCities.fromCity);
+    const destLoc = await geocode(to, distCities.toCity);
     if (!originLoc || !destLoc) {
       resultBox.innerHTML = `<div style="padding:16px;background:var(--danger-soft);color:var(--danger);border-radius:10px;">
-        ⚠️ 地址解析失败：${!originLoc?'起点':'终点'} "${!originLoc?from:to}" 未找到坐标，请改用更准确的名称。
+        ${ic('alert',14)} 地址解析失败：${!originLoc?'起点':'终点'} "${!originLoc?from:to}" 未找到坐标，请改用更准确的名称。
       </div>`;
       return;
     }
@@ -826,7 +1107,7 @@ window.LocationMod = (function() {
       // 步行：调用 walking 路径规划
       const url = `https://restapi.amap.com/v3/direction/walking?key=${encodeURIComponent(getAmapKey().srv)}&origin=${encodeURIComponent(originLoc)}&destination=${encodeURIComponent(destLoc)}`;
       try {
-        const res = await fetch(url); const data = await res.json();
+        const res = await fetchT(url); const data = await res.json();
         if (data.status==='1' && data.route && data.route.paths && data.route.paths[0]) {
           const p = data.route.paths[0];
           result = { distance: (Number(p.distance)/1000).toFixed(2), duration: Math.round(Number(p.duration)/60) };
@@ -835,7 +1116,7 @@ window.LocationMod = (function() {
     } else if (mode === 'bicycling') {
       const url = `https://restapi.amap.com/v4/direction/bicycling?key=${encodeURIComponent(getAmapKey().srv)}&origin=${encodeURIComponent(originLoc)}&destination=${encodeURIComponent(destLoc)}`;
       try {
-        const res = await fetch(url); const data = await res.json();
+        const res = await fetchT(url); const data = await res.json();
         if (data.data && data.data.paths && data.data.paths[0]) {
           const p = data.data.paths[0];
           result = { distance: (Number(p.distance)/1000).toFixed(2), duration: Math.round(Number(p.duration)/60) };
@@ -843,13 +1124,13 @@ window.LocationMod = (function() {
       } catch(e) {}
     } else {
       // driving / transit 复用 routePlan
-      const r = await routePlan(originLoc, destLoc, mode);
+      const r = await routePlan(originLoc, destLoc, mode, distCities.fromCity, distCities.toCity);
       if (r) result = { distance: String(r.distance), duration: r.duration };
     }
 
     if (!result) {
       resultBox.innerHTML = `<div style="padding:16px;background:var(--warn-soft);color:var(--warn);border-radius:10px;">
-        ⚠️ 路径规划失败，请尝试更换出行方式或目标名称。
+        ${ic('alert',14)} 路径规划失败，请尝试更换出行方式或目标名称。
       </div>`;
       return;
     }
@@ -868,15 +1149,15 @@ window.LocationMod = (function() {
         </div>
       </div>
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;">
-        <span class="tag tag-primary tag-sm">🛣️ 路径系数 ${(Number(result.distance)/Number(straightDist)||0).toFixed(2)}</span>
-        <span class="tag tag-success tag-sm">⚡ 平均时速 ${Math.round(Number(result.distance)/(result.duration/60))} km/h</span>
-        ${Number(result.distance)<2?'<span class="tag tag-success tag-sm">✅ 步行可达</span>':Number(result.distance)<5?'<span class="tag tag-primary tag-sm">🚴 骑行友好</span>':'<span class="tag tag-warn tag-sm">🚗 建议驾车</span>'}
+        <span class="tag tag-primary tag-sm">${ic('roadmap',14)} 路径系数 ${(Number(result.distance)/Number(straightDist)||0).toFixed(2)}</span>
+        <span class="tag tag-success tag-sm">${ic('bolt',13)} 平均时速 ${Math.round(Number(result.distance)/(result.duration/60))} km/h</span>
+        ${Number(result.distance)<2?'<span class="tag tag-success tag-sm">'+ic('check',13)+' 步行可达</span>':Number(result.distance)<5?'<span class="tag tag-primary tag-sm">'+ic('compass',13)+' 骑行友好</span>':'<span class="tag tag-warn tag-sm">'+ic('car',13)+' 建议驾车</span>'}
       </div>
       <div id="distMap" style="margin-top:14px;height:420px;border-radius:10px;border:1px solid var(--border-light);background:#f2f4f8;overflow:hidden;position:relative;">
-        <div id="distMapLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;pointer-events:none;">🗺️ 正在加载路径地图…</div>
+        <div id="distMapLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px;pointer-events:none;">${ic('map',13)} 正在加载路径地图…</div>
       </div>
     `;
-    // 异步渲染地图（marker + 路径连线），8秒超时兜底
+    // 异步渲染地图（marker + 路径连线），5秒超时兜底
     let mapTimer = setTimeout(() => {
       const loadingEl = document.getElementById('distMapLoading');
       const mapBox = document.getElementById('distMap');
@@ -889,25 +1170,25 @@ window.LocationMod = (function() {
           const cLng = ((Number(originLoc.split(',')[0])+Number(destLoc.split(',')[0]))/2).toFixed(6);
           const cLat = ((Number(originLoc.split(',')[1])+Number(destLoc.split(',')[1]))/2).toFixed(6);
           const sUrl = `https://restapi.amap.com/v3/staticmap?key=${encodeURIComponent(srvKey)}&location=${cLng},${cLat}&zoom=12&size=900*420&scale=2&markers=${encodeURIComponent(markers)}&paths=${encodeURIComponent(`2,0x1677FF,0.7,3,${pathStr}`)}`;
-          mapBox.innerHTML = `<img src="${sUrl}" alt="路径地图" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.innerHTML='<div style=\\'padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;\\'>⏱️ 地图加载超时，请检查网络或高德Key配置。</div>'">`;
+          mapBox.innerHTML = `<img src="${sUrl}" alt="路径地图" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.innerHTML='<div style=\\'padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;\\'>地图加载超时，请检查网络或高德Key配置。</div>'">`;
         } else {
-          mapBox.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;">⏱️ 地图加载超时，请到【系统设置】检查高德Key配置。</div>';
+          mapBox.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;text-align:center;">' + ic('clock',13) + ' 地图加载超时，请到【系统设置】检查高德Key配置。</div>';
         }
       }
-    }, 8000);
-    renderDistMap(originLoc, destLoc, from, to, mode).then(() => {
+    }, 5000);
+    renderDistMap(originLoc, destLoc, from, to, mode, sdkPromise).then(() => {
       clearTimeout(mapTimer);
       const loadingEl = document.getElementById('distMapLoading');
       if (loadingEl) loadingEl.remove();
     }).catch(() => {
       clearTimeout(mapTimer);
       const box = document.getElementById('distMap');
-      if (box) box.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 地图渲染失败，请检查高德JS Key配置。</div>';
+      if (box) box.innerHTML = '<div style="padding:24px;color:var(--text-3);font-size:12.5px;">' + ic('pin',13) + ' 地图渲染失败，请检查高德JS Key配置。</div>';
     });
   }
 
   // ===== 距离测算·交互式地图与路径连线 =====
-  async function renderDistMap(originLoc, destLoc, fromName, toName, mode) {
+  async function renderDistMap(originLoc, destLoc, fromName, toName, mode, sdkPromise) {
     const jsKey = (localStorage.getItem('k_amap_js')||'').trim();
     const srvKey = getAmapKey().srv;
     const [olng, olat] = originLoc.split(',').map(Number);
@@ -927,20 +1208,20 @@ window.LocationMod = (function() {
         const url = `https://restapi.amap.com/v3/staticmap?key=${encodeURIComponent(srvKey)}&location=${cLng},${cLat}&zoom=12&size=900*420&scale=2&markers=${encodeURIComponent(markers)}&paths=${encodeURIComponent(`2,0x1677FF,0.7,3,${pathStr}`)}`;
         box.innerHTML = `<div style="position:absolute;inset:0;">
           <img src="${url}" alt="路径地图" style="width:100%;height:100%;object-fit:cover;display:block;"
-               onerror="this.parentElement.innerHTML='<div style=\\'padding:24px;color:var(--text-3);font-size:12.5px;\\'>📌 静态地图加载失败，请检查高德Key配置。</div>'">
-          <div style="position:absolute;left:10px;bottom:8px;background:rgba(255,255,255,.85);padding:4px 8px;border-radius:6px;font-size:11.5px;">🔲 静态地图（配置 JS Key 可使用交互地图）</div>
+               onerror="this.parentElement.innerHTML='<div style=\\'padding:24px;color:var(--text-3);font-size:12.5px;\\'>静态地图加载失败，请检查高德Key配置。</div>'">
+          <div style="position:absolute;left:10px;bottom:8px;background:rgba(255,255,255,.85);padding:4px 8px;border-radius:6px;font-size:11.5px;">${ic('map',13)} 静态地图（配置 JS Key 可使用交互地图）</div>
         </div>`;
       } else {
-        box.innerHTML = `<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 建议在【系统设置】中配置高德 Web端 JS Key，即可显示交互地图与真实路径连线。<br/><button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="App.navigate('settings')">去配置 Key</button></div>`;
+        box.innerHTML = `<div style="padding:24px;color:var(--text-3);font-size:12.5px;">${ic('pin',13)} 建议在【系统设置】中配置高德 Web端 JS Key，即可显示交互地图与真实路径连线。<br/><button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="App.navigate('settings')">去配置 Key</button></div>`;
       }
       return;
     }
 
-    // 有 JS Key：加载高德 JS SDK 并渲染交互地图
+    // 有 JS Key：加载高德 JS SDK 并渲染交互地图（sdkPromise 已与路径请求并行预加载）
     let AMap = null;
-    try { AMap = await loadAmapSDK(); } catch(e) {
+    try { AMap = sdkPromise ? await sdkPromise : await loadAmapSDK(); } catch(e) {
       const box = document.getElementById('distMap');
-      if (box) box.innerHTML = `<div style="padding:24px;color:var(--text-3);font-size:12.5px;">📌 高德SDK加载失败：${e.message||e}<br/><button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="App.navigate('settings')">检查 Key 配置</button></div>`;
+      if (box) box.innerHTML = `<div style="padding:24px;color:var(--text-3);font-size:12.5px;">${ic('pin',13)} 高德SDK加载失败：${e.message||e}<br/><button class="btn btn-accent btn-sm" style="margin-top:10px;" onclick="App.navigate('settings')">检查 Key 配置</button></div>`;
       return;
     }
     const box = document.getElementById('distMap');
@@ -956,17 +1237,17 @@ window.LocationMod = (function() {
     map.add([
       new AMap.Marker({
         position: [olng, olat],
-        content: `<div style="background:#F5222D;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(245,34,45,.35);white-space:nowrap;border:2px solid #fff;">🏁 ${fromName}</div>`,
+        content: `<div style="background:#F5222D;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(245,34,45,.35);white-space:nowrap;border:2px solid #fff;">${ic('flag',14)} ${fromName}</div>`,
         offset: new AMap.Pixel(-40, -14), anchor: 'center'
       }),
       new AMap.Marker({
         position: [dlng, dlat],
-        content: `<div style="background:#1677FF;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(22,119,255,.35);white-space:nowrap;border:2px solid #fff;">🎯 ${toName}</div>`,
+        content: `<div style="background:#1677FF;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(22,119,255,.35);white-space:nowrap;border:2px solid #fff;">${ic('target',14)} ${toName}</div>`,
         offset: new AMap.Pixel(-40, -14), anchor: 'center'
       })
     ]);
 
-    // 超时保护：8秒后如果路径还没画出来，至少画一条直线并自动适配视野
+    // 超时保护：5秒后如果路径还没画出来，至少画一条直线并自动适配视野
     let routeDrawn = false;
     const timeout = setTimeout(() => {
       if (routeDrawn) return;
@@ -981,7 +1262,7 @@ window.LocationMod = (function() {
       } catch(e) {}
       try { if (AMap.Scale) map.addControl(new AMap.Scale()); } catch(e) {}
       try { if (AMap.ToolBar) map.addControl(new AMap.ToolBar({position:'RB', locate:false})); } catch(e) {}
-    }, 8000);
+    }, 5000);
 
     function onRouteDone() {
       if (routeDrawn) return;
@@ -1003,7 +1284,7 @@ window.LocationMod = (function() {
         new AMap.Bicycling({ map, hideMarkers: true, autoFitView: true })
           .search(originLoc, destLoc, () => onRouteDone());
       } else if (mode === 'transit') {
-        new AMap.Transfer({ map, city: '南京', hideMarkers: true, autoFitView: true })
+        new AMap.Transfer({ map, city: distCities.toCity, hideMarkers: true, autoFitView: true })
           .search(originLoc, destLoc, () => onRouteDone());
       } else { onRouteDone(); }
     } catch(err) {
@@ -1052,7 +1333,7 @@ window.LocationMod = (function() {
     // 小区中心 Marker（红色，可点击）
     const centerMarker = new AMap.Marker({
       position: [lng, lat],
-      content: `<div style="background:#F5222D;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(245,34,45,0.4);white-space:nowrap;border:2px solid #fff;">🏠 ${comm}</div>`,
+      content: `<div style="background:#F5222D;color:#fff;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(245,34,45,0.4);white-space:nowrap;border:2px solid #fff;">${ic('house',14)} ${comm}</div>`,
       offset: new AMap.Pixel(-40, -14),
       anchor: 'center'
     });
@@ -1084,96 +1365,5 @@ window.LocationMod = (function() {
     try { if (AMap.ToolBar) map.addControl(new AMap.ToolBar({ position: 'RB', locate: false })); } catch(e) {}
   }
 
-  // ===== 区域房价趋势 =====
-  function renderTrend() {
-    const districts = Object.keys(DISTRICT_DATA);
-    return `<div class="card">
-      <div class="card-title">📈 近12个月南京各板块二手房均价走势（元/㎡）<span style="font-weight:400;font-size:11.5px;color:var(--text-3);">（需对接月度抓取数据源，当前为占位曲线）</span></div>
-      <div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap;">
-        ${districts.map((d,i)=>{
-          const colors = ['#1E3A8A','#3B82F6','#D4A24C','#16A34A','#DC2626','#0EA5E9','#7C3AED','#0891B2','#65A30D','#9333EA','#E9C478'];
-          return `<label style="display:flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--border);border-radius:20px;cursor:pointer;font-size:11.5px;">
-            <input type="checkbox" id="trend_${d}" ${['江宁','浦口','鼓楼','河西'].includes(d)?'checked':''} onchange="LocationMod.renderTrendChart()">
-            <span style="width:10px;height:10px;border-radius:2px;background:${colors[i%11]};display:inline-block;"></span>${d}</label>`;
-        }).join('')}
-      </div>
-      <div style="height:360px;" id="trendChart"></div>
-      <div style="margin-top:10px;" id="trendTable"></div>
-    </div>`;
-  }
-  function renderTrendChart() {
-    const el = document.getElementById('trendChart');
-    if (!el) { console.warn('renderTrendChart: #trendChart 不存在'); return; }
-    if (typeof echarts === 'undefined' || !echarts) {
-      console.warn('renderTrendChart: echarts 未加载，尝试延迟重试');
-      setTimeout(renderTrendChart, 500);
-      return;
-    }
-    try {
-      const sel = Object.keys(DISTRICT_DATA).filter(d => document.getElementById('trend_'+d)?.checked);
-      if (!sel.length) { Utils.toast('至少选择1个板块','warn'); return; }
-      const months = [];
-      const today = new Date();
-      for (let i=11;i>=0;i--) {
-        const d = new Date(today.getFullYear(), today.getMonth()-i, 1);
-        months.push(`${d.getFullYear()%100}.${String(d.getMonth()+1).padStart(2,'0')}`);
-      }
-      const colors = ['#1E3A8A','#3B82F6','#D4A24C','#16A34A','#DC2626','#0EA5E9','#7C3AED','#0891B2','#65A30D','#9333EA','#E9C478'];
-      const all = Object.keys(DISTRICT_DATA);
-      const series = sel.map(d=>{
-        const base = DISTRICT_DATA[d].basePrice;
-        const seed = all.indexOf(d);
-        const data = months.map((_,i)=>{
-          const r = (Math.sin(seed*1.1+i*0.7)+Math.cos(seed*0.3+i*0.4))*0.01;
-          const trend = (i/11)*0.04;
-          return Math.round(base * (1 + r + trend - 0.02 + i*0.003));
-        });
-        return { name:d, type:'line', smooth:true, data, showSymbol:false, itemStyle:{color:colors[seed%11]}, endLabel:{show:true,formatter:'{b} {c}', fontSize:10} };
-      });
-
-      // 容器可能尚未完成布局，echarts.init 前确保有尺寸
-      const w = el.offsetWidth, h = el.offsetHeight;
-      if (w === 0 || h === 0) {
-        console.warn('renderTrendChart: 容器尺寸为 0，延迟重试', {w, h});
-        setTimeout(renderTrendChart, 200);
-        return;
-      }
-      const chart = echarts.init(el);
-      chart.setOption({
-        tooltip:{trigger:'axis', valueFormatter:v=>v.toLocaleString()+'元/㎡'},
-        legend:{top:0, type:'scroll', textStyle:{fontSize:11}},
-        grid:{left:50,right:60,top:30,bottom:30},
-        xAxis:{type:'category', data:months, axisLabel:{fontSize:10}},
-        yAxis:{type:'value', axisLabel:{formatter:v=>(v/1000).toFixed(0)+'k'}},
-        series
-      });
-
-      // 表格数据
-      const tableRows = sel.map(d=>{
-        const s = series.find(x=>x.name===d);
-        const first = s.data[0], last = s.data[11], max = Math.max(...s.data), min = Math.min(...s.data);
-        const pct = ((last-first)/first*100).toFixed(2);
-        return `<tr><th>${d}</th>
-          <td>${first.toLocaleString()}</td>
-          <td>${last.toLocaleString()}</td>
-          <td style="color:${Number(pct)>=0?'var(--success)':'var(--danger)'};font-weight:600;">${Number(pct)>=0?'+':''}${pct}%</td>
-          <td>${max.toLocaleString()}</td>
-          <td>${min.toLocaleString()}</td>
-          <td>${DISTRICT_DATA[d].potential}</td>
-        </tr>`;
-      }).join('');
-      document.getElementById('trendTable').innerHTML = `
-        <h4 style="font-size:13px;margin:10px 0 6px;">📊 年度涨跌幅统计</h4>
-        <div style="overflow-x:auto;"><table class="compare-table">
-          <thead><tr><th>板块</th><th>去年同期</th><th>本月均价</th><th>年涨跌幅</th><th>最高</th><th>最低</th><th>潜力评级</th></tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table></div>
-        <p style="font-size:12px;color:var(--text-3);margin-top:6px;">⚠️ 当前曲线为占位数据。真实均价需由月度抓取任务（如每周一自动采集各板块公开成交数据）提供数据源后替换，切勿将占位曲线视为真实行情。</p>
-      `;
-    } catch(e) {
-      console.error('renderTrendChart 渲染失败:', e.message, e.stack);
-    }
-  }
-
-  return { render, setSuggestedCommunity, detectDistrictFromInput, calcCommute, querySchool, showFacility, calcDistance, renderTrendChart, applyMapKey };
+  return { render, setWorkCity, setPartCity, setCommCity, setSchoolCity, setFacilityCity, setFromCity, setToCity, setSuggestedCommunity, detectDistrictFromInput, calcCommute, querySchool, showFacility, calcDistance };
 })();

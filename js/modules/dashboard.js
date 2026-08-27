@@ -4,6 +4,7 @@
 window.DashboardMod = (function() {
 
   function render() {
+    const ic = Utils.icon;   // SF Symbols 风格图标
     const exp = Store.getExpectation();
     const records = Store.getRecords();
     const plans = Store.getPlans();
@@ -53,12 +54,24 @@ window.DashboardMod = (function() {
     const underBudget = records.filter(r => r.totalPrice && r.totalPrice < (exp.budgetMin||0)).length;
 
     const mustHavesBadge = (exp.mustHaves||[]).slice(0,5).map(m=>`<span class="tag tag-accent tag-sm">${m}</span>`).join(' ');
-    const districtBadge = (exp.preferredDistricts||[]).map(d=>`<span class="tag tag-primary tag-sm">${d}</span>`).join(' ');
+    const prefAreas = Store.getPreferredAreas();
+    const districtBadge = prefAreas.length
+      ? prefAreas.map(a=>`<span class="tag tag-primary tag-sm">${a.districts.length ? a.city+'·'+a.districts.join('/') : a.city+'（全城）'}</span>`).join(' ')
+      : '<span class="tag tag-sm">不限</span>';
+    // 期望档案未填写时展示"未设置"，避免误导
+    const noBudget = !exp.budgetMin && !exp.budgetMax;
+    const noRooms = !exp.roomsNeeded || (!exp.roomsNeeded.bedrooms && !exp.roomsNeeded.livingRooms);
+    const noArea = !exp.areaMin && !exp.areaMax;
+    const budgetTxt = noBudget ? '未设置' : `${exp.budgetMin||0}-${exp.budgetMax||0}万`;
+    const roomsTxt = noRooms ? '未设置' : `${exp.roomsNeeded.bedrooms}室${exp.roomsNeeded.livingRooms}厅`;
+    const areaTxt = noArea ? '未设置' : `${exp.areaMin||0}-${exp.areaMax||0}㎡`;
+    const prefTxt = exp.propertyPreference || '未设置';
 
     const html = `
+      <div class="page-shell">
       <div class="page-header">
         <div>
-          <h2><span class="emoji">📊</span>看房画像</h2>
+          <h2><span class="emoji">${ic('chart')}</span>看房画像</h2>
           <p class="page-desc">购房计划全貌一览 — 期望、统计、偏好、进度可视化</p>
         </div>
         <div class="page-actions">
@@ -68,16 +81,16 @@ window.DashboardMod = (function() {
       </div>
 
       <!-- 期望概览 -->
-      <div class="card" style="background:linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);color:#fff;border:none;">
+      <div class="card">
         <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
-          <div style="width:60px;height:60px;border-radius:16px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-size:30px;">🎯</div>
+          <div style="width:60px;height:60px;border-radius:16px;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;color:var(--primary);">${ic('target',30)}</div>
           <div style="flex:1;min-width:240px;">
-            <h3 style="font-size:15px;margin-bottom:6px;opacity:0.9;">我的购房标准</h3>
-            <p style="font-size:14px;line-height:1.8;">
-              💰 预算 <strong>${exp.budgetMin||0}-${exp.budgetMax||0}万</strong> |
-              🏘️ <strong>${(exp.roomsNeeded.bedrooms||3)}室${(exp.roomsNeeded.livingRooms||2)}厅</strong> |
-              📐 ${exp.areaMin||0}-${exp.areaMax||0}㎡ |
-              🛗 偏好：${exp.propertyPreference||'都接受'}
+            <h3 style="font-size:15px;margin-bottom:6px;color:var(--text-1);">我的购房标准</h3>
+            <p style="font-size:14px;line-height:1.8;display:flex;align-items:center;gap:14px;flex-wrap:wrap;color:var(--text-2);">
+              <span>${ic('wallet',14)} 预算 <strong>${budgetTxt}</strong></span>
+              <span>${ic('houses',14)} <strong>${roomsTxt}</strong></span>
+              <span>${ic('ruler',14)} ${areaTxt}</span>
+              <span>${ic('elevator',14)} 偏好：${prefTxt}</span>
             </p>
             <div style="margin-top:6px;">
               ${districtBadge} ${mustHavesBadge}
@@ -87,28 +100,27 @@ window.DashboardMod = (function() {
       </div>
 
       <!-- 6大核心指标 -->
-      <div class="grid-4" style="margin:16px 0;">
+      <div class="grid-4" style="margin:18px 0;">
         <div class="stat-card blue">
-          <div class="stat-icon">🏠</div>
+          <div class="stat-icon">${ic('house')}</div>
           <div class="stat-label">累计已看房</div>
           <div class="stat-value">${records.length}</div>
           <div class="stat-sub">套房源 · ${Object.keys(distStats).length}个区域</div>
-          <div class="progress-bar"><div style="width:${Math.min(100, records.length*5)}%;"></div></div>
         </div>
         <div class="stat-card orange">
-          <div class="stat-icon">📋</div>
+          <div class="stat-icon">${ic('list')}</div>
           <div class="stat-label">待看计划</div>
           <div class="stat-value">${pending.length}</div>
           <div class="stat-sub">${pending.filter(p=>Utils.daysBetween(today,p.date)<=3).length}个近3天 · 已完成${donePlans.length}</div>
         </div>
         <div class="stat-card green">
-          <div class="stat-icon">⭐</div>
+          <div class="stat-icon">${ic('star')}</div>
           <div class="stat-label">重点关注</div>
           <div class="stat-value">${withMatch.filter(w=>w.m.score>=70).length}</div>
           <div class="stat-sub">匹配度 ≥ 70 分房源</div>
         </div>
         <div class="stat-card red">
-          <div class="stat-icon">🎯</div>
+          <div class="stat-icon">${ic('target')}</div>
           <div class="stat-label">最关注区域</div>
           <div class="stat-value" style="font-size:20px;">${topDistrict ? topDistrict[0] : '暂无'}</div>
           <div class="stat-sub">${topDistrict ? '看了 '+topDistrict[1]+' 套' : '开始看房后自动统计'}</div>
@@ -118,50 +130,44 @@ window.DashboardMod = (function() {
       <div class="grid-2">
         <!-- 购房进度 -->
         <div class="card">
-          <div class="card-title">🚀 购房进度</div>
-          <div class="workflow-steps" style="margin:14px 0 20px;">
+          <div class="card-title">${ic('rocket')} 购房进度</div>
+          <div class="wf-segments">
             ${workflow.steps.map((s,i)=>`
-              <div class="wf-step ${i<progress?'done':(i===progress?'current':'')}">
-                <div class="num">${i+1}</div>
-                <div class="label">${s}</div>
+              <div class="wf-seg ${i<progress?'done':(i===progress?'current':'')}" title="${i+1}. ${s}">
+                <i></i><span>${s}</span>
               </div>`).join('')}
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
-            <div style="font-size:12.5px;color:var(--text-2);">
-              进度：<strong style="color:var(--primary);">${progress+1}</strong>/9 · 当前阶段：<span class="tag tag-primary">${workflow.steps[progress]||'未开始'}</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+            <div style="font-size:12.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              进度 <strong style="color:var(--primary);">${progress+1}</strong>/${workflow.steps.length} · 当前阶段：<span class="tag tag-primary">${workflow.steps[progress]||'未开始'}</span>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="App.navigate('workflow')">去管理 →</button>
+            <button class="btn btn-primary btn-sm" style="flex-shrink:0;" onclick="App.navigate('workflow')">去管理 →</button>
           </div>
         </div>
 
         <!-- 预算执行情况 -->
         <div class="card">
-          <div class="card-title">💰 预算执行情况</div>
-          <div style="height:220px;" id="budgetChart"></div>
-          <div style="display:flex;justify-content:space-around;font-size:12.5px;margin-top:6px;">
-            <span class="tag tag-success">✅ 在预算内：${inBudget}</span>
-            <span class="tag tag-warn">⬇️ 低于预期：${underBudget}</span>
-            <span class="tag tag-danger">⬆️ 超出预算：${overBudget}</span>
-          </div>
+          <div class="card-title">${ic('wallet')} 预算执行情况</div>
+          <div style="height:200px;" id="budgetChart"></div>
         </div>
 
         <!-- 看房区域分布 -->
         <div class="card">
-          <div class="card-title">📍 区域看房分布</div>
-          <div style="height:260px;" id="districtChart"></div>
+          <div class="card-title">${ic('pin')} 区域看房分布</div>
+          <div style="height:215px;" id="districtChart"></div>
         </div>
 
         <!-- 房价区间分布 -->
         <div class="card">
-          <div class="card-title">💵 看过房源价格区间</div>
-          <div style="height:260px;" id="priceChart"></div>
+          <div class="card-title">${ic('coin')} 看过房源价格区间</div>
+          <div style="height:215px;" id="priceChart"></div>
         </div>
       </div>
 
       <!-- 意向房源 TOP5 -->
       <div class="card">
-        <div class="card-title">🏆 意向房源排行 TOP5 <span style="font-size:12px;color:var(--text-3);font-weight:400;">（按匹配度+评分综合排序）</span></div>
-        ${records.length===0 ? `<div class="empty-state" style="padding:24px;"><div class="icon">🔍</div><p>还没有房源数据，创建房源记录后自动生成排行。</p></div>`
+        <div class="card-title">${ic('trophy')} 意向房源排行 TOP5 <span style="font-size:12px;color:var(--text-3);font-weight:400;">（按匹配度+评分综合排序）</span></div>
+        ${records.length===0 ? `<div class="empty-state" style="padding:24px;"><div class="icon">${ic('search',54)}</div><p>还没有房源数据，创建房源记录后自动生成排行。</p></div>`
           : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
             ${top5.map((w,i)=>renderTopCard(w, i+1)).join('')}
           </div>`}
@@ -170,13 +176,14 @@ window.DashboardMod = (function() {
       <!-- 户型分布 + 评分走势 -->
       <div class="grid-2">
         <div class="card">
-          <div class="card-title">🏘️ 看过户型分布</div>
-          <div style="height:260px;" id="roomChart"></div>
+          <div class="card-title">${ic('houses')} 看过户型分布</div>
+          <div style="height:215px;" id="roomChart"></div>
         </div>
         <div class="card">
-          <div class="card-title">📈 看房评分走势</div>
-          <div style="height:260px;" id="ratingChart"></div>
+          <div class="card-title">${ic('trend')} 看房评分走势</div>
+          <div style="height:215px;" id="ratingChart"></div>
         </div>
+      </div>
       </div>
     `;
     App.setContent(html);
@@ -194,7 +201,7 @@ window.DashboardMod = (function() {
   function renderTopCard(w, rank) {
     const r = w.r, m = w.m;
     const advice = Utils.decisionAdvice(m.score, m.hasExpectation);
-    const colors = ['#1E3A8A','#3B82F6','#D4A24C','#0EA5E9','#7C3AED'];
+    const colors = ['#0071E3','#2997FF','#FF9F0A','#64D2FF','#BF5AF2'];
     return `<div style="position:relative;border:1px solid var(--border-light);border-radius:12px;padding:14px;cursor:pointer;" onclick="RecordsMod.view('${r.id}')">
       <div style="position:absolute;top:-8px;left:14px;width:32px;height:32px;border-radius:50%;background:${colors[rank-1]};color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-sm);">${rank}</div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:10px;">
@@ -214,29 +221,20 @@ window.DashboardMod = (function() {
   function renderBudgetChart(inB, underB, overB, min, max, records) {
     const C = Utils.theme();
     const chart = echarts.init(document.getElementById('budgetChart'));
-    // 价格分布箱线/散点
-    const prices = records.map(r=>r.totalPrice).filter(Boolean).sort((a,b)=>a-b);
-    const avg = prices.length ? (prices.reduce((a,b)=>a+b,0)/prices.length).toFixed(1) : 0;
+    const rows = [
+      {name:'低于预算', value:underB, color:C.warn},
+      {name:'在预算内', value:inB, color:C.success},
+      {name:'超出预算', value:overB, color:C.danger},
+    ];
     chart.setOption({
-      grid:{left:60,right:30,top:55,bottom:40},
-      legend:{data:['总价','预算上限','预算下限'],top:5,textStyle:{fontSize:11},itemWidth:14,itemHeight:10},
-      tooltip:{trigger:'axis', formatter: params => {
-        const p = params[0]; return `${p.name}<br/>${p.seriesName}: ${p.value}万`;
-      }},
-      xAxis:{type:'category', data: records.map(r=>r.communityName?.slice(0,4)||'-'), axisLabel:{fontSize:10,rotate:30}},
-      yAxis:{type:'value', name:'总价(万)', nameTextStyle:{fontSize:11}, axisLabel:{fontSize:11}},
-      series:[
-        {
-          name:'总价', type:'bar', data: records.map(r=>r.totalPrice||0), itemStyle:{color:function(p){
-            if (!p.value) return '#ccc';
-            if (p.value >= min && p.value <= max) return C.success;
-            if (p.value < min) return C.warn;
-            return C.danger;
-          }}, barMaxWidth:40
-        },
-        {name:'预算上限', type:'line', data: records.map(()=>max), lineStyle:{color:C.primary,type:'dashed',width:2.5}, symbol:'none', label:{show:true, position:'top', formatter: max+'万', fontSize:10, color:C.primary}},
-        {name:'预算下限', type:'line', data: records.map(()=>min), lineStyle:{color:C.accent,type:'dashed',width:2.5}, symbol:'none', label:{show:true, position:'bottom', formatter: min+'万', fontSize:10, color:C.accent}},
-      ]
+      grid:{left:10,right:46,top:10,bottom:5,containLabel:true},
+      tooltip:{trigger:'axis', axisPointer:{type:'shadow'}, formatter:p=>`${p[0].name}<br/><b>${p[0].value}</b> 套`},
+      xAxis:{type:'value', splitLine:{lineStyle:{color:'#F0F1F4'}}, axisLabel:{fontSize:11, color:C.text3}},
+      yAxis:{type:'category', data:rows.map(r=>r.name), axisLine:{show:false}, axisTick:{show:false}, axisLabel:{fontSize:12, color:C.text2}},
+      series:[{type:'bar', barWidth:16,
+        data:rows.map(r=>({value:r.value, itemStyle:{color:r.color, borderRadius:8}})),
+        label:{show:true, position:'right', formatter:'{c}套', fontSize:11, color:C.text3}
+      }]
     });
   }
 
@@ -248,12 +246,21 @@ window.DashboardMod = (function() {
       chart.setOption({title:{text:'暂无可展示数据，开始看房后自动统计',left:'center',top:'center',textStyle:{fontSize:12,color:C.text3}}});
       return;
     }
+    const total = data.reduce((a,[k,v])=>a+v,0);
     chart.setOption({
       tooltip:{trigger:'item', formatter:'{b}: {c}套 ({d}%)'},
-      series:[{type:'pie', radius:['40%','70%'], center:['50%','50%'],
-        label:{formatter:'{b}\n{c}套'},
+      legend:{bottom:0, icon:'circle', itemWidth:8, itemHeight:8, textStyle:{fontSize:11, color:C.text2}},
+      series:[{
+        type:'pie', radius:['42%','68%'], center:['50%','44%'], avoidLabelOverlap:true,
+        itemStyle:{borderRadius:6, borderColor:'#fff', borderWidth:2},
+        label:{show:false},
+        emphasis:{label:{show:true, formatter:'{b}\n{c}套', fontWeight:600, fontSize:12}},
         data: data.map(([k,v],i)=>({name:k, value:v, itemStyle:{color:C.palette[i%C.palette.length]}}))
-      }]
+      }],
+      graphic:{elements:[
+        {type:'text', left:'center', top:'36%', style:{text:String(total), fontSize:26, fontWeight:800, fill:C.text1}},
+        {type:'text', left:'center', top:'52%', style:{text:'总看房(套)', fontSize:11, fill:C.text3}}
+      ]}
     });
   }
 
@@ -264,15 +271,15 @@ window.DashboardMod = (function() {
     const vals = Object.values(range);
     const total = vals.reduce((a,b)=>a+b,0) || 1;
     chart.setOption({
-      grid:{left:55,right:25,top:25,bottom:35},
+      grid:{left:10,right:15,top:32,bottom:5,containLabel:true},
       tooltip:{trigger:'axis', formatter: p => {
         const d = p[0]; return `${d.name}<br/>房源数：<b>${d.value}</b> 套 (${(d.value/total*100).toFixed(1)}%)`;
       }},
-      xAxis:{type:'category', data:labels, axisLabel:{fontSize:10,interval:0,rotate:15}},
-      yAxis:{type:'value', name:'套', nameTextStyle:{fontSize:11}, axisLabel:{fontSize:11}},
-      series:[{type:'bar', data:vals, barWidth:'50%',
-        label:{show:true, position:'top', formatter:'{c}套'},
-        itemStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:C.primaryLight},{offset:1,color:C.primary}])}
+      xAxis:{type:'category', data:labels, axisLabel:{fontSize:10,interval:0,rotate:15}, axisLine:{lineStyle:{color:'#E5E5EA'}}},
+      yAxis:{type:'value', name:'套', nameTextStyle:{fontSize:11}, axisLabel:{fontSize:11, color:C.text3}, splitLine:{lineStyle:{color:'#F0F1F4'}}},
+      series:[{type:'bar', data:vals, barWidth:'46%',
+        label:{show:true, position:'top', formatter:'{c}套', fontSize:10, color:C.text3},
+        itemStyle:{color:C.primary, borderRadius:[8,8,0,0]}
       }]
     });
   }
@@ -286,11 +293,12 @@ window.DashboardMod = (function() {
       return;
     }
     chart.setOption({
-      tooltip:{trigger:'item'},
-      legend:{bottom:0, textStyle:{fontSize:11}},
-      series:[{type:'pie', radius:'60%', roseType:'radius',
+      tooltip:{trigger:'item', formatter:'{b}: {c}套 ({d}%)'},
+      legend:{bottom:0, textStyle:{fontSize:11, color:C.text2}},
+      series:[{type:'pie', radius:'62%', center:['50%','44%'], roseType:'radius',
+        itemStyle:{borderRadius:5, borderColor:'#fff', borderWidth:2},
         data: entries.map(([k,v])=>({name:k, value:v})),
-        label:{formatter:'{b}: {c}套'}
+        label:{formatter:'{b}\n{c}套', fontSize:11, color:C.text2}
       }]
     });
   }
@@ -304,14 +312,14 @@ window.DashboardMod = (function() {
       return;
     }
     chart.setOption({
-      grid:{left:40,right:30,top:30,bottom:40},
+      grid:{left:10,right:15,top:30,bottom:5,containLabel:true},
       tooltip:{trigger:'axis'},
       legend:{top:0,right:0,textStyle:{fontSize:11}},
-      xAxis:{type:'category', data:sorted.map(r=>(r.viewingDate||'').slice(5)||r.communityName?.slice(0,4)||'-'), axisLabel:{fontSize:10,rotate:30}},
-      yAxis:{type:'value', max:5},
+      xAxis:{type:'category', data:sorted.map(r=>(r.viewingDate||'').slice(5)||r.communityName?.slice(0,4)||'-'), axisLabel:{fontSize:10,rotate:30}, axisLine:{lineStyle:{color:'#E5E5EA'}}},
+      yAxis:{type:'value', max:5, axisLabel:{fontSize:11, color:C.text3}, splitLine:{lineStyle:{color:'#F0F1F4'}}},
       series:[
-        {name:'总体评分', type:'line', smooth:true, data:sorted.map(r=>r.overallRating||0), symbol:'circle', symbolSize:8, itemStyle:{color:C.primary}, areaStyle:{color:'rgba(15,118,110,0.12)'}},
-        {name:'匹配度(/20)', type:'line', smooth:true, data:sorted.map(r=>{ const m=Utils.calcMatchScore(r,Store.getExpectation()).score; return m/20; }), symbol:'diamond', symbolSize:8, itemStyle:{color:C.accent}},
+        {name:'总体评分', type:'line', smooth:true, data:sorted.map(r=>r.overallRating||0), symbol:'circle', symbolSize:6, itemStyle:{color:C.primary}, lineStyle:{width:2.5}},
+        {name:'匹配度(/20)', type:'line', smooth:true, data:sorted.map(r=>{ const m=Utils.calcMatchScore(r,Store.getExpectation()).score; return m/20; }), symbol:'diamond', symbolSize:6, itemStyle:{color:C.accent}, lineStyle:{width:2.5}},
       ]
     });
   }

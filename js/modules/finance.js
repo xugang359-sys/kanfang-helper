@@ -3,22 +3,51 @@
    月供/全成本/议价/税费四大计算器
    ============================================ */
 window.FinanceMod = (function() {
+  const ic = Utils.icon;   // SF Symbols 风格图标
   let tab = 'monthly';
+
+  // ===== 城市购房政策（按右上角所选城市带出，供利率/公积金额度/维修基金/议价空间参考） =====
+  // rateB: 首套商贷年利率参考区间(%)；rateF: 公积金年利率(%)；fundCap: 公积金贷款上限(万元)
+  // repairFund: 维修基金(元/㎡)；bargain: 二手房议价空间参考(%)
+  const CITY_POLICY = {
+    '南京': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭130 / 个人60', repairFund:120, bargain:[3,8] },
+    '北京': { rateB:[3.3,3.7], rateF:2.85, fundCap:'家庭120', repairFund:150, bargain:[2,6] },
+    '上海': { rateB:[3.3,3.7], rateF:2.85, fundCap:'家庭120（含补充）', repairFund:130, bargain:[2,6] },
+    '广州': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭100 / 个人60', repairFund:90, bargain:[3,8] },
+    '深圳': { rateB:[3.3,3.7], rateF:2.85, fundCap:'家庭90 / 个人50', repairFund:100, bargain:[2,6] },
+    '杭州': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭100 / 个人50', repairFund:80, bargain:[3,7] },
+    '苏州': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭90', repairFund:90, bargain:[3,7] },
+    '成都': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭80 / 个人40', repairFund:60, bargain:[3,8] },
+    '武汉': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭70', repairFund:60, bargain:[3,8] },
+    '重庆': { rateB:[3.2,3.6], rateF:2.85, fundCap:'个人60', repairFund:80, bargain:[3,8] },
+    '西安': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭75', repairFund:55, bargain:[3,8] },
+    '长沙': { rateB:[3.2,3.5], rateF:2.85, fundCap:'家庭70 / 个人40', repairFund:50, bargain:[3,8] },
+    '天津': { rateB:[3.3,3.7], rateF:2.85, fundCap:'家庭80', repairFund:110, bargain:[2,6] },
+    '合肥': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭60', repairFund:90, bargain:[3,7] },
+    '郑州': { rateB:[3.2,3.6], rateF:2.85, fundCap:'家庭60', repairFund:80, bargain:[3,8] },
+  };
+  const DEFAULT_POLICY = { rateB:[3.2,3.7], rateF:2.85, fundCap:'按当地公积金中心规定', repairFund:100, bargain:[3,8] };
+  function getPolicy(city) {
+    return CITY_POLICY[city] || DEFAULT_POLICY;
+  }
+  // 城市名（右上角设置城市，用于政策提示）
+  function curCity() { return Store.getCity(); }
+
 
   function render() {
     const html = `
       <div class="page-header">
         <div>
-          <h2><span class="emoji">💰</span>财务计算工具集</h2>
+          <h2><span class="emoji">${ic('wallet')}</span>财务计算工具集</h2>
           <p class="page-desc">月供、全成本、议价参考、税费优化 — 搞清楚买房到底花多少钱。</p>
         </div>
       </div>
 
       <div class="sub-tabs" id="finTabs">
-        <div class="sub-tab" data-t="monthly">🏦 月供计算器</div>
-        <div class="sub-tab" data-t="full">💸 全成本计算器</div>
-        <div class="sub-tab" data-t="bargain">💡 议价参考线</div>
-        <div class="sub-tab" data-t="tax">📊 税费优化器</div>
+        <div class="sub-tab" data-t="monthly">${ic('bank',15)} 月供计算器</div>
+        <div class="sub-tab" data-t="full">${ic('money',15)} 全成本计算器</div>
+        <div class="sub-tab" data-t="bargain">${ic('bulb',15)} 议价参考线</div>
+        <div class="sub-tab" data-t="tax">${ic('chart',15)} 税费优化器</div>
       </div>
 
       <div id="finContent"></div>
@@ -38,52 +67,75 @@ window.FinanceMod = (function() {
 
   function showTab() {
     const box = document.getElementById('finContent');
-    if (tab === 'monthly') box.innerHTML = renderMonthly();
-    else if (tab === 'full') box.innerHTML = renderFull();
-    else if (tab === 'bargain') box.innerHTML = renderBargain();
-    else box.innerHTML = renderTax();
+    if (tab === 'monthly') { box.innerHTML = renderMonthly(); calcMonthly(); }
+    else if (tab === 'full') { box.innerHTML = renderFull(); calcFull(); }
+    else if (tab === 'bargain') { box.innerHTML = renderBargain(); calcBargain(); }
+    else { box.innerHTML = renderTax(); calcTax(); }
   }
 
   // ========== 月供计算器 ==========
   function renderMonthly() {
     const exp = Store.getExpectation();
+    const city = curCity();
+    const p = getPolicy(city);
+    const rateBDefault = ((p.rateB[0]+p.rateB[1])/2).toFixed(2);
     return `<div class="grid-2">
       <div class="card">
-        <div class="card-title">🏦 贷款参数</div>
+        <div class="card-title">${ic('bank')} 贷款参数 <span style="font-size:11.5px;font-weight:400;color:var(--text-3);margin-left:6px;">${ic('pin',13)} 已按「${city}」政策带出参考数据</span></div>
         <div class="form-grid">
-          <div class="form-item"><label>房屋总价（万元）</label><input type="number" id="m_price" value="${exp.budgetMax||150}" oninput="calcMonthly()"></div>
-          <div class="form-item"><label>首付比例（%）</label><input type="number" id="m_downPct" value="30" min="0" max="100" oninput="calcMonthly()"></div>
-          <div class="form-item"><label>首付金额（万元）</label><input type="number" id="m_down" value="${exp.downPayment||45}" oninput="calcMonthlyDown()"></div>
-          <div class="form-item"><label>贷款金额（万元）</label><input type="number" id="m_loan" value="${exp.loanAmount||105}" oninput="calcMonthlyLoan()"></div>
+          <div class="form-item"><label>房屋总价（万元）</label><input type="number" id="m_price" value="${exp.budgetMax||150}" oninput="FinanceMod.calcMonthlyPrice()"></div>
+          <div class="form-item"><label>首付比例（%）</label><input type="number" id="m_downPct" value="30" min="0" max="100" oninput="FinanceMod.calcMonthlyDownPct()"></div>
+          <div class="form-item"><label>首付金额（万元）</label><input type="number" id="m_down" value="${exp.downPayment||45}" oninput="FinanceMod.calcMonthlyDown()"></div>
+          <div class="form-item"><label>贷款金额（万元）</label><input type="number" id="m_loan" value="${exp.loanAmount||105}" oninput="FinanceMod.calcMonthlyLoan()"></div>
           <div class="form-item"><label>贷款类型</label>
-            <select id="m_type" onchange="updateRateHint();calcMonthly()">
+            <select id="m_type" onchange="FinanceMod.updateRateHint();FinanceMod.calcMonthly()">
               <option value="business">商业贷款</option>
               <option value="fund">公积金贷款</option>
               <option value="combo">组合贷款</option>
             </select>
           </div>
-          <div class="form-item"><label>商贷年利率（%）</label><input type="number" id="m_rateB" step="0.01" value="3.45" oninput="calcMonthly()"></div>
-          <div class="form-item" id="m_fundBox" style="display:none;"><label>公积金贷款（万元）</label><input type="number" id="m_loanF" value="50" oninput="calcMonthly()"></div>
-          <div class="form-item" id="m_rateFBox" style="display:none;"><label>公积金利率（%）</label><input type="number" id="m_rateF" step="0.01" value="2.85" oninput="calcMonthly()"></div>
+          <div class="form-item"><label>商贷年利率（%）</label><input type="number" id="m_rateB" step="0.01" value="${rateBDefault}" oninput="FinanceMod.calcMonthly()"></div>
+          <div class="form-item" id="m_fundBox" style="display:none;"><label>公积金贷款（万元）</label><input type="number" id="m_loanF" value="50" oninput="FinanceMod.calcMonthly()"></div>
+          <div class="form-item" id="m_rateFBox" style="display:none;"><label>公积金利率（%）</label><input type="number" id="m_rateF" step="0.01" value="${p.rateF}" oninput="FinanceMod.calcMonthly()"></div>
           <div class="form-item"><label>贷款年限（年）</label>
-            <select id="m_years" onchange="calcMonthly()">
+            <select id="m_years" onchange="FinanceMod.calcMonthly()">
               ${[30,25,20,15,10,5].map(y=>`<option ${y===30?'selected':''}>${y}</option>`).join('')}
             </select>
           </div>
           <div class="form-item"><label>还款方式</label>
-            <select id="m_method" onchange="calcMonthly()">
+            <select id="m_method" onchange="FinanceMod.calcMonthly()">
               <option value="equal">等额本息</option>
               <option value="principal">等额本金</option>
             </select>
           </div>
         </div>
         <div class="callout" style="margin-top:14px;">
-          <div class="callout-title">小贴士</div>
-          <p style="font-size:12px;">南京2026年首套商贷利率普遍为3.2-3.6%，公积金贷款利率2.85%（5年以上）。月供建议不超过家庭收入的30%。</p>
+          <div class="callout-title">${ic('pin')} 城市政策提示（${city}）</div>
+          <p style="font-size:12px;">${city}首套商贷利率普遍为${p.rateB[0]}-${p.rateB[1]}%，公积金贷款利率${p.rateF}%（5年以上），公积金贷款上限约：${p.fundCap}。以上为参考区间，实际以当地银行/公积金中心最新执行政策为准。月供建议不超过家庭收入的30%。</p>
         </div>
       </div>
       <div id="m_result"></div>
     </div>`;
+  }
+  // 联动：总价变化 → 按当前首付比例重算首付金额与贷款金额
+  function calcMonthlyPrice() {
+    const price = +document.getElementById('m_price').value||0;
+    const downPct = +document.getElementById('m_downPct').value||0;
+    if (price>0 && downPct>0) {
+      document.getElementById('m_down').value = (price*downPct/100).toFixed(1);
+      document.getElementById('m_loan').value = (price*(100-downPct)/100).toFixed(1);
+    }
+    calcMonthly();
+  }
+  // 联动：首付比例变化 → 重算首付金额与贷款金额
+  function calcMonthlyDownPct() {
+    const price = +document.getElementById('m_price').value||0;
+    const downPct = +document.getElementById('m_downPct').value||0;
+    if (price>0) {
+      document.getElementById('m_down').value = (price*downPct/100).toFixed(1);
+      document.getElementById('m_loan').value = (price*(100-downPct)/100).toFixed(1);
+    }
+    calcMonthly();
   }
   function updateRateHint() {
     const t = document.getElementById('m_type').value;
@@ -153,7 +205,7 @@ window.FinanceMod = (function() {
       <div class="calc-result">
         <h4>${method==='equal'?'每月等额还款':'首月月供（逐月递减）'}</h4>
         <div class="big-num">${Utils.moneyFormat(Math.round(monthly))}<small style="font-size:14px;font-weight:400;opacity:0.8;">/月</small></div>
-        ${overPay?`<div style="background:rgba(220,38,38,0.25);padding:6px 10px;border-radius:6px;font-size:12px;margin-bottom:10px;">⚠️ 已超过您期望的月供上限 ${Utils.moneyFormat(exp.monthlyPaymentMax)}，建议调整首付或总价预算</div>`:''}
+        ${overPay?`<div style="background:rgba(220,38,38,0.25);padding:6px 10px;border-radius:6px;font-size:12px;margin-bottom:10px;">${ic('alert',13)} 已超过您期望的月供上限 ${Utils.moneyFormat(exp.monthlyPaymentMax)}，建议调整首付或总价预算</div>`:''}
         <div class="result-grid">
           <div class="r-item"><div class="r-label">首付金额</div><div class="r-value">${(down||0).toFixed(1)}万</div></div>
           <div class="r-item"><div class="r-label">贷款总额</div><div class="r-value">${loanB.toFixed(1)}万</div></div>
@@ -165,7 +217,7 @@ window.FinanceMod = (function() {
         </div>
       </div>
       <div class="card" style="margin-top:16px;">
-        <div class="card-title">📈 还款明细（前6期 + 后2期）</div>
+        <div class="card-title">${ic('trend')} 还款明细（前6期 + 后2期）</div>
         <table style="width:100%;font-size:12.5px;" class="compare-table">
           <thead><tr><th>期数</th><th>月供</th><th>本金</th><th>利息</th><th>剩余本金</th></tr></thead>
           <tbody>${renderLoanDetail(loanB*10000, type==='business'?rateB:type==='fund'?(+document.getElementById('m_rateF').value||0)/100/12:rateB, n, method, type)}</tbody>
@@ -224,20 +276,26 @@ window.FinanceMod = (function() {
   // ========== 全成本计算器 ==========
   function renderFull() {
     const exp = Store.getExpectation();
+    const city = curCity();
+    const p = getPolicy(city);
     return `<div class="grid-2">
       <div class="card">
-        <div class="card-title">💸 各项成本输入</div>
+        <div class="card-title">${ic('money')} 各项成本输入 <span style="font-size:11.5px;font-weight:400;color:var(--text-3);margin-left:6px;">${ic('pin',13)} 已按「${city}」政策带出参考数据</span></div>
         <div class="form-grid">
-          <div class="form-item"><label>房屋总价（万元）</label><input type="number" id="f_price" value="${exp.budgetMax||150}" oninput="calcFull()"></div>
-          <div class="form-item"><label>房屋类型</label><select id="f_type" onchange="calcFull()"><option value="new">新房</option><option value="old" selected>二手房</option></select></div>
-          <div class="form-item"><label>是否首套房</label><select id="f_first" onchange="calcFull()"><option value="1" selected>是</option><option value="0">否</option></select></div>
-          <div class="form-item"><label>建筑面积（㎡）</label><input type="number" id="f_area" value="${exp.areaMax||100}" oninput="calcFull()"></div>
-          <div class="form-item"><label>是否电梯房</label><select id="f_elev" onchange="calcFull()"><option value="1" selected>是</option><option value="0">否</option></select></div>
-          <div class="form-item"><label>满五唯一（二手房）</label><select id="f_51" onchange="calcFull()"><option value="0">否</option><option value="1">是</option></select></div>
-          <div class="form-item"><label>是否满二（二手房）</label><select id="f_2" onchange="calcFull()"><option value="1" selected>是</option><option value="0">否</option></select></div>
-          <div class="form-item"><label>中介费比例（%）</label><input type="number" id="f_agency" step="0.1" value="2.4" oninput="calcFull()"></div>
-          <div class="form-item"><label>装修预算（万元）</label><input type="number" id="f_renov" value="${exp.renovationBudget||10}" oninput="calcFull()"></div>
-          <div class="form-item"><label>物业费（元/㎡/月）</label><input type="number" id="f_propFee" step="0.1" value="2.0" oninput="calcFull()"></div>
+          <div class="form-item"><label>房屋总价（万元）</label><input type="number" id="f_price" value="${exp.budgetMax||150}" oninput="FinanceMod.calcFull()"></div>
+          <div class="form-item"><label>房屋类型</label><select id="f_type" onchange="FinanceMod.calcFull()"><option value="new">新房</option><option value="old" selected>二手房</option></select></div>
+          <div class="form-item"><label>是否首套房</label><select id="f_first" onchange="FinanceMod.calcFull()"><option value="1" selected>是</option><option value="0">否</option></select></div>
+          <div class="form-item"><label>建筑面积（㎡）</label><input type="number" id="f_area" value="${exp.areaMax||100}" oninput="FinanceMod.calcFull()"></div>
+          <div class="form-item"><label>是否电梯房</label><select id="f_elev" onchange="FinanceMod.calcFull()"><option value="1" selected>是</option><option value="0">否</option></select></div>
+          <div class="form-item"><label>满五唯一（二手房）</label><select id="f_51" onchange="FinanceMod.calcFull()"><option value="0">否</option><option value="1">是</option></select></div>
+          <div class="form-item"><label>是否满二（二手房）</label><select id="f_2" onchange="FinanceMod.calcFull()"><option value="1" selected>是</option><option value="0">否</option></select></div>
+          <div class="form-item"><label>中介费比例（%）</label><input type="number" id="f_agency" step="0.1" value="2.4" oninput="FinanceMod.calcFull()"></div>
+          <div class="form-item"><label>装修预算（万元）</label><input type="number" id="f_renov" value="${exp.renovationBudget||10}" oninput="FinanceMod.calcFull()"></div>
+          <div class="form-item"><label>物业费（元/㎡/月）</label><input type="number" id="f_propFee" step="0.1" value="2.0" oninput="FinanceMod.calcFull()"></div>
+        </div>
+        <div class="callout" style="margin-top:14px;">
+          <div class="callout-title">${ic('pin')} 城市政策提示（${city}）</div>
+          <p style="font-size:12px;">${city}新房维修基金参考标准约 <strong>${p.repairFund}元/㎡</strong>；契税按全国统一政策：首套 90㎡以下1%、以上1.5%，二套 90㎡以下1%、以上2%，三套及以上3%。以上为参考，以当地最新执行政策为准。</p>
         </div>
       </div>
       <div id="f_result"></div>
@@ -273,8 +331,9 @@ window.FinanceMod = (function() {
     const vat = isOld && !fullTwo ? priceY*0.053 : 0;
     // 中介费
     const agencyFee = priceY * agencyPct;
-    // 维修基金（新房）
-    const repairFund = isOld ? 0 : area*120/10000; // 120元/㎡
+    // 维修基金（新房，按城市政策标准）
+    const repairFundUnit = getPolicy(curCity()).repairFund;
+    const repairFund = isOld ? 0 : area*repairFundUnit/10000; // 元/㎡
     // 评估费（二手房约0.1%）
     const assessFee = isOld ? priceY*0.001 : 0;
     // 工本费等
@@ -302,7 +361,7 @@ window.FinanceMod = (function() {
         </div>
       </div>
       <div class="card" style="margin-top:16px;">
-        <div class="card-title">📋 成本占比</div>
+        <div class="card-title">${ic('list')} 成本占比</div>
         <div style="height:240px;" id="fullChart"></div>
       </div>
     `;
@@ -328,21 +387,21 @@ window.FinanceMod = (function() {
   // ========== 议价参考 ==========
   function renderBargain() {
     const exp = Store.getExpectation();
-    const records = Store.getRecords();
+    const city = curCity();
+    const p = getPolicy(city);
     return `<div class="grid-2">
       <div class="card">
-        <div class="card-title">💡 议价参数</div>
+        <div class="card-title">${ic('bulb')} 议价参数 <span style="font-size:11.5px;font-weight:400;color:var(--text-3);margin-left:6px;">${ic('pin',13)} 已按「${city}」市场情况参考</span></div>
         <div class="form-grid">
           <div class="form-item"><label>小区名称</label>
-            <input type="text" id="b_comm" list="b_comm_list" placeholder="选择或输入小区">
-            <datalist id="b_comm_list">${records.map(r=>`<option value="${r.communityName}">`).join('')}</datalist>
+            <input type="text" id="b_comm" placeholder="直接输入小区名称">
           </div>
-          <div class="form-item"><label>挂牌总价（万元）</label><input type="number" id="b_listPrice" value="${exp.budgetMax||150}" oninput="calcBargain()"></div>
-          <div class="form-item"><label>小区近期成交均价（元/㎡）</label><input type="number" id="b_avgPrice" value="13500" placeholder="可参考同小区历史成交" oninput="calcBargain()"></div>
-          <div class="form-item"><label>本房源建筑面积（㎡）</label><input type="number" id="b_area" value="${exp.areaMax||100}" oninput="calcBargain()"></div>
-          <div class="form-item"><label>房龄（年）</label><input type="number" id="b_age" value="10" oninput="calcBargain()"></div>
+          <div class="form-item"><label>挂牌总价（万元）</label><input type="number" id="b_listPrice" value="${exp.budgetMax||150}" oninput="FinanceMod.calcBargain()"></div>
+          <div class="form-item"><label>小区近期成交均价（元/㎡）</label><input type="number" id="b_avgPrice" value="13500" placeholder="可参考同小区历史成交" oninput="FinanceMod.calcBargain()"></div>
+          <div class="form-item"><label>本房源建筑面积（㎡）</label><input type="number" id="b_area" value="${exp.areaMax||100}" oninput="FinanceMod.calcBargain()"></div>
+          <div class="form-item"><label>房龄（年）</label><input type="number" id="b_age" value="10" oninput="FinanceMod.calcBargain()"></div>
           <div class="form-item"><label>楼层/装修/户型</label>
-            <select id="b_condition" oninput="calcBargain()">
+            <select id="b_condition" oninput="FinanceMod.calcBargain()">
               <option value="1">一般（有硬伤）</option>
               <option value="1.02" selected>中等（正常水平）</option>
               <option value="1.05">较好（楼层好/精装修）</option>
@@ -351,8 +410,8 @@ window.FinanceMod = (function() {
           </div>
         </div>
         <div class="callout success" style="margin-top:14px;">
-          <div class="callout-title">💡 议价建议参考</div>
-          <p style="font-size:12px;">南京二手房普遍可谈空间：挂牌价的 3-8%。若房源挂时长超过3个月、卖家急需资金、房龄较老、存在明显硬伤，可向 8-10% 方向谈。新房一般优惠幅度较小，可争取装修、车位、物业费等赠送。</p>
+          <div class="callout-title">${ic('bulb')} 议价建议参考（${city}）</div>
+          <p style="font-size:12px;">${city}二手房普遍可谈空间：挂牌价的 ${p.bargain[0]}-${p.bargain[1]}%。若房源挂时长超过3个月、卖家急需资金、房龄较老、存在明显硬伤，可向更高方向谈。新房一般优惠幅度较小，可争取装修、车位、物业费等赠送。</p>
         </div>
       </div>
       <div id="b_result"></div>
@@ -380,7 +439,7 @@ window.FinanceMod = (function() {
     else if (diffPct > 2) { advice='价格略高，可尝试砍价 3-5%'; color='tag-accent'; }
     else if (diffPct > -2) { advice='价格合理，可小幅度议价 1-3% 或争取中介费/家具附赠'; color='tag-primary'; }
     else if (diffPct > -5) { advice='价格偏低，性价比不错，建议尽快确认产权与房况'; color='tag-success'; }
-    else { advice='价格明显偏低，⚠️ 请务必核实房源真实性与产权纠纷风险'; color='tag-danger'; }
+    else { advice='价格明显偏低，请务必核实房源真实性与产权纠纷风险'; color='tag-danger'; }
 
     const html = `
       <div class="calc-result">
@@ -395,7 +454,7 @@ window.FinanceMod = (function() {
         </div>
       </div>
       <div class="card" style="margin-top:16px;">
-        <div class="card-title">📌 砍价策略</div>
+        <div class="card-title">${ic('pin')} 砍价策略</div>
         <ul style="font-size:13px;color:var(--text-2);line-height:2;padding-left:16px;">
           <li>首次出价建议在合理价基础上再降 3-5%，给双方留谈判空间</li>
           <li>强调"可快速付首付""满额首付"等优势，争取卖家降价</li>
@@ -410,22 +469,27 @@ window.FinanceMod = (function() {
 
   // ========== 税费优化器 ==========
   function renderTax() {
+    const city = curCity();
     return `<div class="card">
-      <div class="card-title">📊 请输入房源参数（最多比较3套）</div>
+      <div class="card-title">${ic('chart')} 请输入房源参数（最多比较3套）</div>
       <table style="width:100%;" class="compare-table">
         <thead><tr><th>参数</th>
-          ${[1,2,3].map(i=>`<th style="min-width:160px;">房源 ${i} <label style="margin-left:6px;"><input type="checkbox" id="t_en${i}" ${i===1?'checked':''} onchange="calcTax()">启用</label></th>`).join('')}
+          ${[1,2,3].map(i=>`<th style="min-width:160px;">房源 ${i} <label style="margin-left:6px;"><input type="checkbox" id="t_en${i}" ${i===1?'checked':''} onchange="FinanceMod.calcTax()">启用</label></th>`).join('')}
         </tr></thead>
         <tbody>
-          <tr><th>总价（万元）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_p${i}" value="${[138,120,150][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="calcTax()"></td>`).join('')}</tr>
-          <tr><th>房屋类型</th>${[1,2,3].map(i=>`<td><select id="t_t${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="calcTax()"><option value="new">新房</option><option value="old" selected>二手房</option></select></td>`).join('')}</tr>
-          <tr><th>面积（㎡）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_a${i}" value="${[98,92,110][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="calcTax()"></td>`).join('')}</tr>
-          <tr><th>是否首套</th>${[1,2,3].map(i=>`<td><select id="t_f${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
-          <tr><th>满二（二手）</th>${[1,2,3].map(i=>`<td><select id="t_2${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
-          <tr><th>满五唯一（二手）</th>${[1,2,3].map(i=>`<td><select id="t_w${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="calcTax()"><option value="0">否</option><option value="1" ${i===1?'selected':''}>是</option></select></td>`).join('')}</tr>
-          <tr><th>中介费%（总）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_ag${i}" step="0.1" value="2.4" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="calcTax()"></td>`).join('')}</tr>
+          <tr><th>总价（万元）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_p${i}" value="${[138,120,150][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
+          <tr><th>房屋类型</th>${[1,2,3].map(i=>`<td><select id="t_t${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="new">新房</option><option value="old" selected>二手房</option></select></td>`).join('')}</tr>
+          <tr><th>面积（㎡）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_a${i}" value="${[98,92,110][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
+          <tr><th>是否首套</th>${[1,2,3].map(i=>`<td><select id="t_f${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
+          <tr><th>满二（二手）</th>${[1,2,3].map(i=>`<td><select id="t_2${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
+          <tr><th>满五唯一（二手）</th>${[1,2,3].map(i=>`<td><select id="t_w${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="0">否</option><option value="1" ${i===1?'selected':''}>是</option></select></td>`).join('')}</tr>
+          <tr><th>中介费%（总）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_ag${i}" step="0.1" value="2.4" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
         </tbody>
       </table>
+      <div class="callout" style="margin-top:14px;">
+        <div class="callout-title">${ic('pin')} 税费政策说明</div>
+        <p style="font-size:12px;">契税、个税、增值税为全国统一政策：契税 首套 90㎡以下1%、以上1.5%，二套 90㎡以下1%、以上2%，三套及以上3%；二手房满五唯一免征个税、满二免征增值税。维修基金按「${city}」标准约 ${getPolicy(city).repairFund}元/㎡ 计算，各城市可存在差异，以当地最新执行政策为准。</p>
+      </div>
     </div>
     <div id="t_result" style="margin-top:16px;"></div>`;
   }
@@ -445,7 +509,7 @@ window.FinanceMod = (function() {
       const deed = p*deedR;
       const income = isOld && !w5 ? p*0.01 : 0;
       const vat = isOld && !full2 ? p*0.053 : 0;
-      const repair = isOld ? 0 : a*120/10000;
+      const repair = isOld ? 0 : a*getPolicy(curCity()).repairFund/10000;
       const agency = p*ag;
       const total = deed+income+vat+repair+agency+0.085;
       return {i, p, deed, deedR, income, vat, repair, agency, total};
@@ -456,23 +520,23 @@ window.FinanceMod = (function() {
     const best = results[0];
     const html = `
       <div class="card">
-        <div class="card-title">💰 税费对比结果</div>
+        <div class="card-title">${ic('wallet')} 税费对比结果</div>
         <div style="overflow-x:auto;">
         <table class="compare-table">
           <thead><tr><th>项目</th>${results.map(r=>`<th>房源 ${r.i}</th>`).join('')}</tr></thead>
           <tbody>
             <tr><th>房价</th>${results.map(r=>`<td class="${r.p===Math.min(...results.map(x=>x.p))?'best':''}">${r.p} 万</td>`).join('')}</tr>
             <tr><th>契税 (${(best.deedR*100).toFixed(1)}%)</th>${results.map(r=>`<td>${r.deed.toFixed(2)} 万</td>`).join('')}</tr>
-            <tr><th>个人所得税</th>${results.map(r=>`<td style="${r.income===0?'color:var(--success);':''}">${r.income.toFixed(2)} 万 ${r.income===0?'✅满五唯一':''}</td>`).join('')}</tr>
-            <tr><th>增值税及附加</th>${results.map(r=>`<td style="${r.vat===0?'color:var(--success);':''}">${r.vat.toFixed(2)} 万 ${r.vat===0?'✅满二':''}</td>`).join('')}</tr>
+            <tr><th>个人所得税</th>${results.map(r=>`<td style="${r.income===0?'color:var(--success);':''}">${r.income.toFixed(2)} 万 ${r.income===0?ic('check',12)+'满五唯一':''}</td>`).join('')}</tr>
+            <tr><th>增值税及附加</th>${results.map(r=>`<td style="${r.vat===0?'color:var(--success);':''}">${r.vat.toFixed(2)} 万 ${r.vat===0?ic('check',12)+'满二':''}</td>`).join('')}</tr>
             <tr><th>维修基金</th>${results.map(r=>`<td>${r.repair.toFixed(2)} 万</td>`).join('')}</tr>
             <tr><th>中介费</th>${results.map(r=>`<td>${r.agency.toFixed(2)} 万</td>`).join('')}</tr>
-            <tr style="background:var(--primary-soft);"><th>💡 合计税费+中介</th>${results.map(r=>`<td class="${r.i===best.i?'best':''}" style="font-weight:700;">${r.total.toFixed(2)} 万 (占比${(r.total/r.p*100).toFixed(1)}%)</td>`).join('')}</tr>
+            <tr style="background:var(--primary-soft);"><th>${ic('bulb',14)} 合计税费+中介</th>${results.map(r=>`<td class="${r.i===best.i?'best':''}" style="font-weight:700;">${r.total.toFixed(2)} 万 (占比${(r.total/r.p*100).toFixed(1)}%)</td>`).join('')}</tr>
           </tbody>
         </table>
         </div>
         <div class="callout success" style="margin-top:14px;">
-          <div class="callout-title">📌 推荐结论</div>
+          <div class="callout-title">${ic('pin')} 推荐结论</div>
           <p style="font-size:13px;">从税费角度看，<strong>房源 ${best.i}</strong> 总成本最低（${best.total.toFixed(2)}万）。建议优先考虑<span style="color:var(--success)">满五唯一</span>的二手房，可免征个税${results.some(r=>r.vat===0)?'；满二可免征增值税':''}，税费差距最高可达 ${(Math.max(...results.map(r=>r.total))-Math.min(...results.map(r=>r.total))).toFixed(2)} 万元。</p>
         </div>
       </div>
@@ -480,5 +544,5 @@ window.FinanceMod = (function() {
     document.getElementById('t_result').innerHTML = html;
   }
 
-  return { render, calcMonthly, calcMonthlyDown, calcMonthlyLoan, updateRateHint, calcFull, calcBargain, calcTax };
+  return { render, calcMonthly, calcMonthlyPrice, calcMonthlyDownPct, calcMonthlyDown, calcMonthlyLoan, updateRateHint, calcFull, calcBargain, calcTax, getPolicy, curCity };
 })();
