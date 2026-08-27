@@ -1,0 +1,6 @@
+# 构建镜像时排除：本地数据（含 API 密钥）、依赖、测试产物
+.git/
+node_modules/
+data/
+test_out/
+*.log
