@@ -747,4 +747,8 @@ function ensureDefaultAdmin() {
 const args = process.argv.slice(2);
 const pi = args.indexOf('--port');
 ensureDefaultAdmin(); // 启动时确保存在默认管理员
-tryListen(pi > -1 ? (parseInt(args[pi + 1], 10) || DEFAULT_PORT) : DEFAULT_PORT);
+// 云平台部署适配：优先使用平台注入的 PORT 环境变量（Zeabur/Render/Railway 等），本地默认 8080
+const envPort = parseInt(process.env.PORT, 10) || 0;
+const port = pi > -1 ? (parseInt(args[pi + 1], 10) || envPort || DEFAULT_PORT)
+                     : (envPort || DEFAULT_PORT);
+tryListen(port);

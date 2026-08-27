@@ -1,5 +1,13 @@
 {
-  "dependencies": {
-    "docx": "^9.7.1"
+  "name": "kanfang-helper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "看房助手 · 零依赖 Node.js 后端 + 前端 SPA",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
