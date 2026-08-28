@@ -12,6 +12,7 @@ const path   = require('path');
 const os     = require('os');
 const crypto = require('crypto');
 const { exec } = require('child_process');
+const zlib    = require('zlib');
 
 const DEFAULT_PORT = 8080;
 const ROOT = __dirname;
@@ -646,6 +647,23 @@ const MIME = {
   '.mp4':  'video/mp4',
 };
 
+/* ---------- gzip 压缩（加速海外/弱网下的静态资源加载） ---------- */
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.json', '.svg', '.csv', '.ttf', '.woff']);
+const gzipCache = new Map(); // key: 路径+修改时间 -> 压缩后 Buffer
+function gzipIfWorth(filePath, data) {
+  try {
+    const key = filePath + ':' + fs.statSync(filePath).mtimeMs;
+    let buf = gzipCache.get(key);
+    if (!buf) {
+      buf = zlib.gzipSync(data, { level: 6 });
+      if (buf.length >= data.length) return null; // 压缩无收益则不缓存
+      if (gzipCache.size > 200) gzipCache.clear();
+      gzipCache.set(key, buf);
+    }
+    return buf;
+  } catch(e) { return null; }
+}
+
 function openBrowser(url) {
   const cmd = process.platform === 'win32' ? 'start'
             : process.platform === 'darwin' ? 'open'
@@ -691,11 +709,22 @@ function tryListen(port) {
           }
         } else {
           const ext = path.extname(filePath).toLowerCase();
-          res.writeHead(200, {
+          const headers = {
             'Content-Type': MIME[ext] || 'application/octet-stream',
             'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
             'Access-Control-Allow-Origin': '*',
-          });
+          };
+          // gzip 压缩文本类资源，加速海外/弱网加载
+          if (COMPRESSIBLE.has(ext) && (req.headers['accept-encoding'] || '').includes('gzip')) {
+            const gz = gzipIfWorth(filePath, data);
+            if (gz) {
+              headers['Content-Encoding'] = 'gzip';
+              res.writeHead(200, headers);
+              res.end(gz);
+              return;
+            }
+          }
+          res.writeHead(200, headers);
           res.end(data);
         }
       });
