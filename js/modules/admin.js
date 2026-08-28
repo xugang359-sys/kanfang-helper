@@ -452,19 +452,31 @@ window.AdminMod = (function() {
       if (_mapBackBtn) _mapBackBtn.style.display = '';
     };
     if (_provGeoCache[adcode]) { done(_provGeoCache[adcode]); return; }
-    fetch('https://geo.datav.aliyun.com/areas_v3/bound/' + adcode + '_full.json')
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    // 依次尝试多个数据源（v3 主源 → v2 备用），任一失败自动切换，避免单源故障导致下钻失败
+    const sources = [
+      'https://geo.datav.aliyun.com/areas_v3/bound/' + adcode + '_full.json',
+      'https://geo.datav.aliyun.com/areas_v2/bound/' + adcode + '_full.json',
+    ];
+    const loadGeo = i => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      return fetch(sources[i], { signal: ctrl.signal })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .finally(() => clearTimeout(timer));
+    };
+    const trySources = i => loadGeo(i)
       .then(geo => { _provGeoCache[adcode] = geo; done(geo); })
-      .catch(() => {
-        // 离线降级：用本地 geojson 中的中心点放大到该省份区域
-        const f = (_chinaGeo && _chinaGeo.features || []).find(x => x.properties.name === provName);
-        if (f && f.properties.center) {
-          chart.setOption({ series: [{ id: 'province', center: f.properties.center, zoom: 4.5 }] });
-          Utils.toast('城市边界数据加载失败，已放大到 ' + provName, 'warn');
-        } else {
-          Utils.toast('城市边界数据加载失败', 'warn');
-        }
-      });
+      .catch(() => (i + 1 < sources.length ? trySources(i + 1) : Promise.reject(new Error('all sources failed'))));
+    trySources(0).catch(() => {
+      // 离线降级：用本地 geojson 中的中心点放大到该省份区域
+      const f = (_chinaGeo && _chinaGeo.features || []).find(x => x.properties.name === provName);
+      if (f && f.properties.center) {
+        chart.setOption({ series: [{ id: 'province', center: f.properties.center, zoom: 4.5 }] });
+        Utils.toast('城市边界数据加载失败，已放大到 ' + provName, 'warn');
+      } else {
+        Utils.toast('城市边界数据加载失败', 'warn');
+      }
+    });
   }
 
   // 从城市层返回全国省域层

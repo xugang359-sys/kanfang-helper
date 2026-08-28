@@ -14,6 +14,20 @@
 </head>
 <body>
 
+<!-- 刷新加载过渡：保持页面背景，仅居中一个旋转加载图标 -->
+<div id="appLoader" class="app-loader" aria-hidden="false">
+  <style>
+    .app-loader{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+      transition:opacity .3s ease,visibility .3s}
+    .app-loader.hide{opacity:0;visibility:hidden;pointer-events:none}
+    .app-loader-spin{width:34px;height:34px;border:3px solid rgba(0,113,227,.18);border-top-color:var(--primary,#0071E3);
+      border-radius:50%;animation:loaderSpin .7s linear infinite}
+    @keyframes loaderSpin{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion: reduce){.app-loader-spin{animation:none}}
+  </style>
+  <div class="app-loader-spin" role="status" aria-label="加载中"></div>
+</div>
+
 <!-- 门户式顶部导航 · 深蓝奢华风 -->
 <header class="topbar">
   <div class="topbar-inner">
@@ -152,8 +166,8 @@
 <script src="js/modules/news.js?v=20260913"></script>
 <script src="js/modules/workflow.js?v=20260832"></script>
 <script src="js/modules/report.js?v=20260832"></script>
-<script src="js/modules/admin.js?v=20260827n"></script>
+<script src="js/modules/admin.js?v=20260828a"></script>
 <script src="js/modules/settings.js?v=20260916"></script>
-<script src="js/app.js?v=20260828e"></script>
+<script src="js/app.js?v=20260828f"></script>
 </body>
 </html>
