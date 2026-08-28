@@ -190,7 +190,7 @@ window.CompareMod = (function() {
     `;
     document.getElementById('cmpResult').innerHTML = html;
 
-    if (echarts) {
+    Utils.ensureEcharts().then(() => {
       const chart = echarts.init(document.getElementById('cmpRadar'));
       const indNames = ['预算','户型','通勤','配套','观感','潜力'];
       const detKeys = ['budget','layout','commute','facility','impression','potential'];
@@ -206,7 +206,7 @@ window.CompareMod = (function() {
           areaStyle:{opacity:0.18}
         }))}]
       });
-    }
+    }).catch(() => {});
   }
 
   function renderFullMatrix(data) {

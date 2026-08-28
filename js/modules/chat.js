@@ -5,13 +5,9 @@
    ============================================ */
 window.ChatMod = (function() {
   const ic = Utils.icon;
-  // 会话存储按账号隔离：每个注册用户只读取/写入自己的操作记录（本地 key 以邮箱区分）
-  function curEmail() {
-    try { return (window.AuthMod && AuthMod.currentUser() && AuthMod.currentUser().email) || 'guest'; }
-    catch(e) { return 'guest'; }
-  }
-  function storeKey() { return 'house_hunter_chat_sessions_' + curEmail(); }
-  function activeKey() { return 'house_hunter_chat_active_' + curEmail(); }
+  // 会话存储键为固定键（纳入云端快照同步）；账号隔离由 SyncMod.apply 按账号快照覆盖完成
+  function storeKey() { return 'house_hunter_chat_sessions'; }
+  function activeKey() { return 'house_hunter_chat_active'; }
   let messages = [];     // 当前会话的消息
   let sessions = [];     // 全部会话 [{id,title,createdAt,updatedAt,messages}]
   let activeId = null;   // 当前会话 id
@@ -92,6 +88,8 @@ window.ChatMod = (function() {
     sessions = sessions.filter(s => s.id === activeId || (s.messages && s.messages.length > 0));
     localStorage.setItem(storeKey(), JSON.stringify(sessions));
     if (activeId) localStorage.setItem(activeKey(), activeId);
+    // 标记数据变更，防抖上传云端（换设备后会话历史可恢复）
+    if (window.SyncMod && typeof SyncMod.markChanged === 'function') SyncMod.markChanged();
   }
 
   function relTime(ts) {

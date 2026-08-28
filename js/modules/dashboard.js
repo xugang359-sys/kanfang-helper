@@ -202,14 +202,14 @@ window.DashboardMod = (function() {
     `;
     App.setContent(html);
 
-    // 渲染图表
-    if (echarts) {
+    // 渲染图表（echarts 按需加载：首屏 DOM 先显示，图表就绪后补绘）
+    Utils.ensureEcharts().then(() => {
       renderBudgetChart(inBudget, underBudget, overBudget, exp.budgetMin||0, exp.budgetMax||150, records);
       renderDistrictChart(distStats);
       renderPriceChart(priceRange);
       renderRoomChart(roomMap);
       renderRatingChart(records);
-    }
+    }).catch(() => {});
   }
 
   function renderTopCard(w, rank) {

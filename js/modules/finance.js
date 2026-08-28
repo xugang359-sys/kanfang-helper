@@ -366,7 +366,7 @@ window.FinanceMod = (function() {
       </div>
     `;
     document.getElementById('f_result').innerHTML = html;
-    if (echarts) {
+    Utils.ensureEcharts().then(() => {
       const C = Utils.theme();
       const chart = echarts.init(document.getElementById('fullChart'));
       chart.setOption({
@@ -381,7 +381,7 @@ window.FinanceMod = (function() {
             {value:renov, name:'装修', itemStyle:{color:C.success}},
           ]}]
       });
-    }
+    }).catch(() => {});
   }
 
   // ========== 议价参考 ==========

@@ -58,7 +58,27 @@ window.App = (function() {
     } catch(e) { /* ChatMod 未加载时静默跳过 */ }
   }
 
-  function navigate(view) {
+  // 低频视图模块按需加载：首屏不下载，首次切入对应视图时才动态注入
+  const LAZY_MODS = {
+    'AdminMod':    'js/modules/admin.js',
+    'LocationMod': 'js/modules/location.js',
+    'FinanceMod':  'js/modules/finance.js',
+    'ReportMod':   'js/modules/report.js',
+    'WorkflowMod': 'js/modules/workflow.js',
+    'CompareMod':  'js/modules/compare.js',
+  };
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src + '?v=20260928';
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('模块加载失败: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  function navigate(view) { return doNavigate(view).catch(() => {}); }
+  async function doNavigate(view) {
     const v = VIEW_MAP[view];
     if (!v) return;
     // 权限拦截：系统管理四个子模块 仅管理员可访问
@@ -100,6 +120,10 @@ window.App = (function() {
     } catch(_){}
     try {
       const modName = v.mod;
+      // 低频模块按需加载：首次切入该视图时动态注入脚本，完成后渲染
+      if (!window[modName] && LAZY_MODS[modName]) {
+        await loadScript(LAZY_MODS[modName]);
+      }
       window._RENDER_ERR = null;
       window[v.mod].render(v.sub);   // AdminMod.render('users'|'logs'|'config'|'data')
     } catch(e) {
@@ -435,24 +459,9 @@ window.App = (function() {
       const h = location.hash.slice(1);
       if (VIEW_MAP[h]) initView = h;
     }
-    // 如果 echarts 尚未加载完成（CDN慢），等待最多5秒再渲染
-    if (typeof echarts === 'undefined') {
-      let waited = 0;
-      const waitEcharts = setInterval(() => {
-        waited += 200;
-        if (typeof echarts !== 'undefined' || waited >= 5000) {
-          clearInterval(waitEcharts);
-          navigate(initView);
-          hideLoader();
-          if (typeof echarts === 'undefined') {
-            Utils.toast('图表库加载失败，部分图表可能不显示', 'warn', 3000);
-          }
-        }
-      }, 200);
-    } else {
-      navigate(initView);
-      hideLoader();
-    }
+    // echarts 已改为按需加载：首屏不依赖，直接渲染视图（图表由各模块 ensureEcharts 后补绘）
+    navigate(initView);
+    hideLoader();
     // 计划提醒延迟检查（给通知权限点的时间）
     setTimeout(() => CalendarMod.checkReminders(), 3000);
     // 欢迎Toast

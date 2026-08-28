@@ -333,9 +333,9 @@ window.AdminMod = (function() {
 
     setTimeout(() => {
       const el = document.getElementById(boxId);
-      if (!el || typeof echarts === 'undefined') return;
+      if (!el) return;
       _mapBackBtn = document.getElementById(backId);
-      // 加载中国地图 geojson（本地缓存）
+      // 加载 echarts（按需）与中国地图 geojson（本地缓存）
       const setup = geo => {
         if (geo) {
           try { echarts.registerMap('china', geo); _chinaGeo = geo; } catch(e) { console.warn('registerMap:', e); }
@@ -355,11 +355,13 @@ window.AdminMod = (function() {
           }
         });
       };
-      if (_chinaGeo) { setup(_chinaGeo); return; }
-      fetch('js/vendor/china.json')
-        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .then(geo => setup(geo))
-        .catch(() => setup(null)); // 地图数据加载失败：退化为空底图（仅散点）
+      Utils.ensureEcharts().then(() => {
+        if (_chinaGeo) { setup(_chinaGeo); return; }
+        fetch('js/vendor/china.json')
+          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(geo => setup(geo))
+          .catch(() => setup(null)); // 地图数据加载失败：退化为空底图（仅散点）
+      }).catch(() => {});
     }, 50);
     return html;
   }

@@ -720,6 +720,21 @@ window.Utils = (function() {
     return `<svg class="ic ${cls}" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
   }
 
+  // 按需加载 echarts（约 334KB gzip）：首屏 DOM 先渲染，图表渲染前动态注入，避免阻塞
+  let echartsPromise = null;
+  function ensureEcharts() {
+    if (window.echarts) return Promise.resolve();
+    if (echartsPromise) return echartsPromise;
+    echartsPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'js/vendor/echarts.min.js';
+      s.onload = () => resolve();
+      s.onerror = () => { echartsPromise = null; reject(new Error('echarts 加载失败')); };
+      document.head.appendChild(s);
+    });
+    return echartsPromise;
+  }
+
   return {
     formatWan, formatYuan, formatArea, formatRooms,
     esc,
@@ -734,6 +749,7 @@ window.Utils = (function() {
     cssColor, theme, resetTheme,
     getApiKeys, apiConfigured, apiStatus, apiGate,
     parseLLMConfig, callLLM, collectContextForAI, fetchQuota,
+    ensureEcharts,
     icon,
   };
 })();

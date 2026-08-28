@@ -617,8 +617,8 @@ window.RecordsMod = (function() {
       </div>
     `;
     App.setContent(html);
-    // 渲染雷达图
-    if (echarts) {
+    // 渲染雷达图（echarts 按需加载）
+    Utils.ensureEcharts().then(() => {
       const C = Utils.theme();
       const chart = echarts.init(document.getElementById('radarView'));
       const dims = ['预算','户型','通勤','配套','观感','潜力'];
@@ -630,7 +630,7 @@ window.RecordsMod = (function() {
         series:[{type:'radar',data:[{name:'匹配度',value:vals,
           areaStyle:{opacity:0.3,color:C.primary},lineStyle:{color:C.primary,width:2},itemStyle:{color:C.accent}}]}]
       });
-    }
+    }).catch(() => {});
   }
 
   function renderChecklistResult(cl) {

@@ -5,7 +5,7 @@
    ============================================ */
 window.SyncMod = (function() {
   const PREFIX = 'house_hunter_';
-  const KEYS = ['expectation', 'records', 'plans', 'settings', 'workflow', 'favorites', 'notifications'];
+  const KEYS = ['expectation', 'records', 'plans', 'settings', 'workflow', 'favorites', 'notifications', 'chat_sessions'];
   const TS_KEY = PREFIX + 'last_snapshot_ts';
   let timer = null;
 
