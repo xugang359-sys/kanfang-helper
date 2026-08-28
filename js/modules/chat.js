@@ -28,13 +28,17 @@ window.ChatMod = (function() {
 5. 如果用户的问题超出购房领域，礼貌引导回购房话题
 6. 不提供具体的法律/金融承诺，建议用户咨询专业人士`;
 
-  // 快捷问题
+  // 快捷问题（含城市占位 {{city}}，点击时按右上角设置的省份/城市动态生成）
   const QUICK_PROMPTS = [
     { icon: 'house',   text: '帮我分析已看房源',  prompt: '根据我已记录的房源数据，帮我分析哪套最值得考虑，优劣势分别是什么？' },
-    { icon: 'map',     text: '推荐适合的板块',     prompt: '根据我的购房预算和通勤需求，推荐几个适合的南京板块并分析原因？' },
+    { icon: 'map',     text: '推荐适合的板块',     prompt: '根据我的购房预算和通勤需求，推荐几个适合的{{city}}板块并分析原因？' },
     { icon: 'calc',    text: '贷款方案怎么选',     prompt: '首套房贷款，等额本息和等额本金哪个更划算？帮我分析利弊。' },
-    { icon: 'sparkle', text: '买房流程是什么',     prompt: '南京买房的完整流程是什么？从看房到领证每一步要注意什么？' },
+    { icon: 'sparkle', text: '买房流程是什么',     prompt: '{{city}}买房的完整流程是什么？从看房到领证每一步要注意什么？' },
   ];
+  // 按右上角当前城市生成具体提问
+  function quickPrompt(q) {
+    return q.prompt.replace(/\{\{city\}\}/g, Store.getCity());
+  }
 
   // ===== 会话存储 =====
   function genId() {
@@ -117,8 +121,8 @@ window.ChatMod = (function() {
         <h2>Hi，我叫${ASSISTANT_NAME}！</h2>
         <p>你的专属 AI 购房管家，问我任何购房问题——房源分析、板块对比、贷款计算、购房流程</p>
         <div class="chat-quick-grid">
-          ${QUICK_PROMPTS.map(q => `
-            <button class="chat-quick-card" onclick="ChatMod.send('${q.prompt.replace(/'/g, "\\'")}')">
+          ${QUICK_PROMPTS.map((q, i) => `
+            <button class="chat-quick-card" onclick="ChatMod.sendQuick(${i})">
               <span class="chat-quick-icon">${ic(q.icon, 20)}</span>
               <span class="chat-quick-text">${q.text}</span>
             </button>
@@ -148,7 +152,8 @@ window.ChatMod = (function() {
                 <span class="chat-quota-ico">${ic('bolt', 13)}</span>
                 <span class="chat-quota-txt">额度加载中…</span>
               </button>
-              ${messages.length > 0 ? `<button class="btn btn-ghost btn-sm" onclick="ChatMod.clearHistory()">${ic('trash', 14)} 清空</button>` : ''}
+              <!-- 清空按钮始终渲染（无消息时禁用），避免动态插入导致顶栏按钮位置跳变 -->
+              <button class="btn btn-ghost btn-sm chat-clear-btn" id="chatClearBtn" onclick="ChatMod.clearHistory()" ${messages.length === 0 ? 'disabled' : ''} title="清空当前对话">${ic('trash', 14)} 清空</button>
               <button class="chat-icon-btn" onclick="ChatMod.newSession()" title="新建对话">${ic('plus', 18)}</button>
               <button class="chat-icon-btn" onclick="ChatMod.toggleSider()" title="对话记录">${ic('menu', 18)}</button>
             </div>
@@ -249,6 +254,16 @@ window.ChatMod = (function() {
     const drawer = document.querySelector('.chat-container .chat-history');
     if (drawer) drawer.classList.remove('open');
   }
+
+  // 对话记录面板打开时：点击面板外任意位置自动收起（面板内操作与开关按钮不误触）
+  document.addEventListener('click', (e) => {
+    if (!historyOpen) return;
+    const drawer = document.querySelector('.chat-container .chat-history');
+    if (!drawer) return;
+    if (drawer.contains(e.target)) return;                    // 面板内部操作不关闭
+    if (e.target.closest('[onclick*="toggleSider"]')) return; // 对话记录开关按钮不误触
+    closeDrawer();
+  });
 
   function siderItem(s) {
     return `
@@ -403,7 +418,11 @@ window.ChatMod = (function() {
 
     // 构建上下文
     const contextData = Utils.collectContextForAI();
-    const systemMsg = { role: 'system', content: SYSTEM_PROMPT + (contextData ? '\n\n以下是用户当前数据，供你参考：\n' + contextData : '') };
+    // 项目规则：用户未明确指定城市/区域时，以右上角设置的省份/城市为默认参考
+    const city = Store.getCity();
+    const prov = Store.getProvinceOfCity(city);
+    const cityRule = `\n\n【用户当前所在地区】省份：${prov}，城市：${city}。\n规则：如果用户没有明确指定城市或区域，请以上述省份/城市为默认参考给出回答；如果用户明确提到了其他城市/区域，则优先遵循用户指定的地区。`;
+    const systemMsg = { role: 'system', content: SYSTEM_PROMPT + cityRule + (contextData ? '\n\n以下是用户当前数据，供你参考：\n' + contextData : '') };
     const apiMessages = [systemMsg, ...messages.filter(m => m.role !== 'error').slice(-20)];
 
     // 调用大模型
@@ -436,6 +455,13 @@ window.ChatMod = (function() {
     const input = document.getElementById('chatInput');
     if (!input) return;
     send(input.value);
+  }
+
+  // 便捷问题：点击时按右上角当前城市动态生成提问并发送
+  function sendQuick(i) {
+    const q = QUICK_PROMPTS[i];
+    if (!q) return;
+    send(quickPrompt(q));
   }
 
   function clearHistory() {
@@ -587,17 +613,9 @@ window.ChatMod = (function() {
   }
 
   function refreshHeader() {
-    // 只更新头部"清空"按钮的显隐，避免整个页面重渲染（插在额度徽章之后，保持 徽章→清空→新建→记录 顺序）
-    const headerBtns = document.querySelector('.chat-header-right > .btn');
-    if (!headerBtns) {
-      const right = document.querySelector('.chat-header-right');
-      const qp = right && right.querySelector('.chat-quota-pill');
-      if (right && messages.length > 0) {
-        right.insertAdjacentHTML(qp ? 'afterend' : 'afterbegin', `<button class="btn btn-ghost btn-sm" onclick="ChatMod.clearHistory()">${ic('trash', 14)} 清空</button>`);
-      }
-    } else if (messages.length === 0) {
-      headerBtns.remove();
-    }
+    // 清空按钮始终渲染占位，这里只切换禁用态，避免增删节点导致顶栏按钮位置跳变
+    const btn = document.getElementById('chatClearBtn');
+    if (btn) btn.disabled = messages.length === 0;
   }
 
   function clearInput() {
@@ -766,7 +784,7 @@ window.ChatMod = (function() {
     document.addEventListener('click', e => { if (!wrap.contains(e.target)) hideFabPop(true); }, { passive: true });
   }
 
-  return { render, send, sendFromInput, clearHistory, doClear, autoResize, onKeydown, renderFab,
+  return { render, send, sendQuick, sendFromInput, clearHistory, doClear, autoResize, onKeydown, renderFab,
            toggleSider, newSession, switchSession, delSession, doDelSession, closeDrawer, openRechargeModal,
            refreshQuotaAll, initFab, showFabPop, hideFabPop, gotoChat };
 })();

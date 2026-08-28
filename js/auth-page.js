@@ -9,15 +9,22 @@ window.AuthPage = (function() {
     document.querySelectorAll('#authTabs .auth-tab').forEach(t => t.classList.toggle('on', t.dataset.mode === m));
     document.getElementById('nameField').style.display = m === 'register' ? '' : 'none';
     document.getElementById('cityField').style.display = m === 'register' ? '' : 'none';
+    const quota = document.getElementById('authQuota');
+    if (quota) quota.style.display = m === 'register' ? '' : 'none';
     document.getElementById('aSubmit').textContent = m === 'login' ? '登录' : '注册';
+    document.getElementById('aFootPre').textContent = m === 'login' ? '还没有账号？' : '已有帐号，';
     document.getElementById('aSwitch').textContent = m === 'login' ? '立即注册' : '直接登录';
     document.getElementById('aSwitch').dataset.go = m === 'login' ? 'register' : 'login';
     document.getElementById('aPass').autocomplete = m === 'login' ? 'current-password' : 'new-password';
-    // 标题区文案随模式切换（Apple 官网式）
+    // 标题随模式切换（Apple 官网式）
     const t = document.getElementById('authTitle');
-    const s = document.getElementById('authSub');
     if (t) t.textContent = m === 'login' ? '欢迎回来' : '创建您的账号';
-    if (s) s.textContent = m === 'login' ? '登录后继续你的购房决策' : '新用户注册即送 20 次 AI 对话额度';
+    // 切换模式时清空输入，避免登录凭据/注册信息互相串页
+    document.querySelectorAll('#authForm input').forEach(inp => { if (inp.type !== 'checkbox') inp.value = ''; });
+    const citySel = document.getElementById('aCity');
+    if (citySel) citySel.value = '';
+    const cityClear = document.getElementById('cityInputClear');
+    if (cityClear) cityClear.hidden = true;
     hideErr();
   }
 
@@ -169,39 +176,111 @@ window.AuthPage = (function() {
     el.textContent = '';
     el.classList.remove('show');
   }
+  // 统一控制提交按钮忙碌/空闲态
+  function setBusy(on, label) {
+    const btn = document.getElementById('aSubmit');
+    if (!btn) return;
+    btn.disabled = on;
+    btn.textContent = label;
+  }
 
   async function submit(e) {
     e.preventDefault();
     const email = document.getElementById('aEmail').value;
     const pass  = document.getElementById('aPass').value;
     const name  = document.getElementById('aName').value;
-    const city  = document.getElementById('aCity').value;
-    const btn   = document.getElementById('aSubmit');
+    let city  = document.getElementById('aCity').value;
+    // 城市兜底：隐藏下拉未写入（如输入完整城市名后未点选）时，若输入框为有效城市则自动补选
+    if (mode === 'register') {
+      const cv = document.getElementById('cityInput').value.trim();
+      if (cv && CityPicker.allCities && CityPicker.allCities.some(({ city: c }) => c === cv)) {
+        city = cv;
+        document.getElementById('aCity').value = cv;
+      }
+    }
     if (mode === 'register' && !city) {
       showErr('请选择目前所在城市');
-      CityPicker.open();
       return;
     }
-    // 登录与注册均须勾选同意《服务条款》和《隐私政策》
+    // 必填校验：通过后才进入服务端预验证与协议确认弹窗
+    const vmsg = validateFields(email, pass, name, city);
+    if (vmsg) { showErr(vmsg); return; }
+    hideErr();
+    // 服务端预验证：登录校验邮箱已注册且密码正确；注册校验邮箱未被占用（通过后才弹协议框）
+    setBusy(true, '验证中…');
+    const vr = await AuthMod.verify(email, pass, mode === 'register' ? 'register' : 'login');
+    setBusy(false, mode === 'login' ? '登录' : '注册');
+    if (!vr.ok) { showErr(vr.err); return; }
+    // 未勾选同意时，弹 Apple 风格确认框；确认后自动勾选并继续
     const terms = document.getElementById('aTerms');
     if (terms && !terms.checked) {
-      showErr('请先阅读并同意《服务条款》和《隐私政策》');
+      TermsConfirm.open(() => {
+        terms.checked = true;
+        doAuth(email, pass, name, city);
+      });
       return;
     }
-    btn.disabled = true;
-    btn.textContent = mode === 'login' ? '正在登录...' : '正在注册...';
+    await doAuth(email, pass, name, city);
+  }
+
+  // 必填字段校验（弹窗前置：先校验，后提示协议确认）
+  function validateFields(email, pass, name, city) {
+    const isReg = mode === 'register';
+    if (isReg && !name.trim()) return '请输入昵称';
+    if (!email.trim()) return '请输入邮箱信息';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return '请输入正确的邮箱格式';
+    if (!pass) return '请输入密码';
+    if (pass.length < 6) return '密码至少 6 位';
+    return '';
+  }
+
+  async function doAuth(email, pass, name, city) {
+    setBusy(true, mode === 'login' ? '正在登录...' : '正在注册...');
     hideErr();
     const res = mode === 'login'
       ? await AuthMod.login(email, pass)
       : await AuthMod.register(name, email, pass, city);
     if (!res.ok) {
       showErr(res.err);
-      btn.disabled = false;
-      btn.textContent = mode === 'login' ? '登录' : '注册';
+      setBusy(false, mode === 'login' ? '登录' : '注册');
       return;
     }
     location.replace('index.html');
   }
+
+  // 协议确认弹窗（Apple 风格 Alert：毛玻璃遮罩 + 居中卡片 + 弹簧入场）
+  const TermsConfirm = {
+    el: null, ok: null, cancel: null, onDone: null,
+    init() {
+      this.el = document.getElementById('termsMask');
+      this.ok = document.getElementById('termsOk');
+      this.cancel = document.getElementById('termsCancel');
+      if (!this.el || !this.ok || !this.cancel) return;
+      this.ok.addEventListener('click', () => {
+        const fn = this.onDone;
+        this.close();
+        if (fn) fn();
+      });
+      this.cancel.addEventListener('click', () => this.close());
+      document.addEventListener('keydown', (ev) => {
+        if (this.el.hidden) return;
+        if (ev.key === 'Escape') { ev.preventDefault(); this.close(); }
+      });
+    },
+    open(onDone) {
+      if (!this.el) { if (onDone) onDone(); return; }
+      this.onDone = onDone;
+      this.el.hidden = false;
+      requestAnimationFrame(() => this.el.classList.add('show'));
+      this.ok.focus();
+    },
+    close() {
+      if (!this.el || this.el.hidden) return;
+      this.el.classList.remove('show');
+      this.onDone = null;
+      setTimeout(() => { this.el.hidden = true; }, 220);
+    }
+  };
 
   // 密码可见性切换（Apple 官网式小眼睛）
   function bindPassToggle(btn, input) {
@@ -226,6 +305,7 @@ window.AuthPage = (function() {
     if (AuthMod.isLoggedIn()) { location.replace('index.html'); return; }
     renderCities();
     CityPicker.init();
+    TermsConfirm.init();
     initPassToggle();
     document.querySelectorAll('#authTabs .auth-tab').forEach(t => t.addEventListener('click', () => setMode(t.dataset.mode)));
     document.getElementById('aSwitch').addEventListener('click', () => setMode(document.getElementById('aSwitch').dataset.go));

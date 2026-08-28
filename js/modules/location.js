@@ -839,18 +839,6 @@ window.LocationMod = (function() {
     }
     return '';
   }
-  // 周边配套示例：优先取「当前城市」已记录小区，不再硬编码南京小区
-  function facilityExamples(city) {
-    const names = [...new Set(Store.getRecords()
-      .filter(r => recCityOf(r) === city && r.communityName)
-      .map(r => r.communityName))].slice(0, 4);
-    if (names.length) {
-      return `<p style="font-size:12.5px;color:var(--text-3);margin:8px 0;">${ic('bulb',13)} 快速示例（${city}已记录小区）：
-        ${names.map(n=>`<a style="color:var(--primary);cursor:pointer;margin-right:12px;" onclick="document.getElementById('f_comm').value='${n}';LocationMod.showFacility();">${n}</a>`).join('')}
-      </p>`;
-    }
-    return `<p style="font-size:12.5px;color:var(--text-3);margin:8px 0;">${ic('bulb',13)} 提示：${city}暂无已记录小区，可直接在上方输入小区名（支持智能补全），或在【房源记录】中新增后一键示例。</p>`;
-  }
   function renderFacility() {
     return `<div class="card">
       <div class="card-title">${ic('hospital')} 周边配套地图（以小区为中心3KM范围）</div>
@@ -858,7 +846,7 @@ window.LocationMod = (function() {
         <div class="form-item full"><label>查询城市</label>
           <div class="cascade-group loc-cascade">${Store.cityCascadeHTML(facilityCity, 'fc', { onCity: 'LocationMod.setFacilityCity(this)' })}</div>
         </div>
-        <div class="form-item"><label>小区名称</label><input id="f_comm" placeholder="输入小区名或点击下方示例" data-autocomplete data-city="${facilityCity}" data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'f_dist')"></div>
+        <div class="form-item"><label>小区名称</label><input type="text" id="f_comm" placeholder="输入小区名" data-autocomplete data-city="${facilityCity}" data-poi-type="${POI_TYPES.community}" onblur="LocationMod.detectDistrictFromInput(this,'f_dist')"></div>
         <div class="form-item"><label>所在区域</label>
           <select id="f_dist">
             <option value="">请选择</option>
@@ -866,8 +854,7 @@ window.LocationMod = (function() {
           </select>
         </div>
       </div>
-      ${facilityExamples(facilityCity)}
-      <button class="btn btn-primary btn-sm" onclick="LocationMod.showFacility()">${ic('map',15)} 显示配套</button>
+      <div style="margin-top:10px;"><button class="btn btn-primary" onclick="LocationMod.showFacility()">${ic('search',15)} 显示配套</button></div>
       <div id="f_result" style="margin-top:14px;"></div>
     </div>`;
   }
@@ -1003,10 +990,8 @@ window.LocationMod = (function() {
 
   // ===== 距离测算（小区 → 任意目标：商场/医院/学校/地铁） =====
   function renderDistance() {
-    // 快速选择只展示「起点城市」的已记录房源，示例也按当前城市生成
-    const records = Store.getRecords().filter(r => recCityOf(r) === distCities.fromCity);
-    const fromEx = records[0] ? records[0].communityName : `${distCities.fromCity}市中心`;
-    const fromEx2 = records[1] ? records[1].communityName : '输入小区名';
+    const fromEx = `${distCities.fromCity}市中心`;
+    const fromEx2 = '输入小区名';
     const toEx = `${distCities.toCity}市中心`;
     const html = `
       <div class="card">
@@ -1036,13 +1021,6 @@ window.LocationMod = (function() {
             <button class="btn btn-primary" onclick="LocationMod.calcDistance()">${ic('search',15)} 计算距离</button>
           </div>
         </div>
-        ${records.length ? `
-          <div style="margin-top:12px;padding:10px;background:var(--bg-2);border-radius:6px;font-size:12.5px;">
-            <strong style="color:var(--text-2);">${ic('pin',13)} 快速选择已记录房源作为起点（${distCities.fromCity}）：</strong>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-              ${records.slice(0,6).map(r=>`<span class="tag tag-sm" style="cursor:pointer;background:var(--primary-soft);color:var(--primary);" onclick="document.getElementById('d_from').value='${r.communityName}';">${r.communityName}</span>`).join('')}
-            </div>
-          </div>` : ''}
         <div id="d_result" style="margin-top:14px;">
           <div class="empty-state" style="padding:24px;"><div class="icon">${ic('ruler',54)}</div>
             <h4>输入起点和终点开始测算</h4>

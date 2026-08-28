@@ -57,11 +57,9 @@ body {
   padding: 48px 40px 56px;
 }
 .auth-main .auth-title,
-.auth-main .auth-sub,
 .auth-main .auth-card {
   width: 100%; max-width: 424px;
 }
-.auth-main .auth-sub { margin-left: auto; margin-right: auto; }
 
 /* ---- 右栏 · 品牌介绍（深蓝渐变，Apple 发布会式光晕） ---- */
 .auth-intro {
@@ -153,11 +151,8 @@ body {
 .auth-title {
   font-family: var(--a-display);
   font-size: 34px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.1;
+  margin: 0 0 26px;
   transition: opacity 0.25s var(--a-ease), transform 0.25s var(--a-ease);
-}
-.auth-sub {
-  font-size: 15px; color: var(--a-text-3); margin: 8px 0 26px; letter-spacing: 0.01em;
-  transition: opacity 0.25s var(--a-ease);
 }
 
 /* ---- 卡片 ---- */
@@ -243,6 +238,8 @@ body {
 .a-pass-toggle .eye-on { display: none; }
 .a-pass-toggle.showing .eye-off { display: none; }
 .a-pass-toggle.showing .eye-on { display: block; }
+/* 禁用 Edge/IE 浏览器内置的密码显示眼睛，避免与自定义眼睛重复 */
+#aPass::-ms-reveal { display: none; }
 
 /* 城市自动补全输入框 */
 .city-autocomplete { position: relative; }
@@ -392,4 +389,58 @@ body {
   .auth-card { animation: none; }
   .auth-logo { animation: none; }
   * { transition-duration: 0.01ms !important; }
+}
+
+/* ============================================
+   协议确认弹窗（Apple 风格 Alert）
+   毛玻璃遮罩 + 白色圆角卡片 + 弹簧入场
+   ============================================ */
+.a-mask {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  /* 遮罩仍覆盖全屏，但弹窗聚焦在左栏（登录表单）区域内居中：
+     左栏 flex 1.18 / 右栏 flex 1，左栏宽 = 1.18/(1.18+1) ≈ 54.13% */
+  padding-right: calc(100% / 2.18);
+  background: rgba(0,0,0,0.32);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity 0.22s var(--a-ease);
+}
+.a-mask.show { opacity: 1; }
+.a-mask[hidden] { display: none; }
+.a-alert {
+  width: min(320px, calc(100vw - 48px));
+  background: #fff; border-radius: 20px;
+  box-shadow: 0 24px 60px -12px rgba(0,0,0,0.28);
+  transform: scale(0.92) translateY(6px);
+  transition: transform 0.28s var(--a-ease);
+}
+.a-mask.show .a-alert { transform: none; }
+.a-alert-body { padding: 22px 20px 18px; }
+.a-alert-title {
+  font-family: var(--a-display);
+  font-size: 17px; font-weight: 700; color: var(--a-text);
+  text-align: center; margin-bottom: 8px;
+}
+.a-alert-msg {
+  font-size: 13px; line-height: 1.55; color: var(--a-text-3);
+  text-align: center; margin: 0;
+}
+.a-alert-actions {
+  display: flex; border-top: 1px solid rgba(0,0,0,0.08);
+}
+.a-alert-btn {
+  flex: 1; padding: 14px 0; border: none; background: transparent;
+  font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
+  color: var(--a-text-3); border-radius: 0 0 0 20px;
+  transition: background 0.15s var(--a-ease), opacity 0.15s var(--a-ease);
+}
+.a-alert-btn + .a-alert-btn { border-left: 1px solid rgba(0,0,0,0.08); border-radius: 0 0 20px 0; }
+.a-alert-btn.primary { color: var(--a-blue); }
+.a-alert-btn:active { background: rgba(0,0,0,0.05); }
+.a-alert-btn:focus-visible { outline: 2px solid var(--a-blue); outline-offset: -2px; }
+
+/* 窄屏（右栏隐藏、表单全宽）：弹窗恢复全屏居中（需置于 .a-mask 基础规则之后） */
+@media (max-width: 960px) {
+  .a-mask { padding-right: 0; }
 }

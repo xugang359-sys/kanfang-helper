@@ -21,6 +21,7 @@
     `<svg width="${s || 24}" height="${s || 24}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ICONS.spark}</svg>`;
 
   const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   /* ============================================
      系统模拟数据（与 data/db/snapshots 快照一致）
@@ -141,6 +142,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
         </div>
         <h5>你好，我是贾维斯</h5>
+        <span class="p-ai-badge" title="AI 智能对话"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>AI 智能</span>
         ${o.closable ? '<button type="button" class="p-ai-close" aria-label="收起悬浮助手"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>' : ''}
       </div>
       <div class="p-ai-body">
@@ -242,6 +244,7 @@
         <div class="p-chat">
           <div class="p-chat-welcome">
             <h5>你好，我是贾维斯</h5>
+            <span class="p-ai-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>AI 智能</span>
             <p>你的专属购房管家，已加载期望档案与 6 套看房记录</p>
           </div>
           <div class="p-chat-quick">
@@ -317,6 +320,17 @@
     const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 12);
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
+  }
+
+  // 导航右上角：已登录显示昵称 + 进入工作台（系统页），未登录显示开始使用（登录页）
+  function renderNavAction() {
+    const box = $('.p-nav-actions');
+    if (!box) return;
+    let u = null;
+    try { u = JSON.parse(localStorage.getItem('house_hunter_session') || 'null'); } catch (e) {}
+    box.innerHTML = u && u.email
+      ? `<span class="p-nav-user">${esc(u.name || u.email)}</span><a class="p-btn p-btn-primary" href="index.html">进入工作台</a>`
+      : `<a class="p-btn p-btn-primary" href="login.html">开始使用</a>`;
   }
 
   // 首屏分层入场：逐层上浮去模糊，与导航同步启动
@@ -470,8 +484,12 @@
     window.addEventListener('resize', placeToTop, { passive: true });
     const onScroll = () => {
       const past = window.scrollY > HERO_TOP + 60;
-      if (past && !shown && !dismissed) setShown(true);
-      else if (!past && shown) { setShown(false); dismissed = false; }   // 回顶部后重置，再次下滚可重现
+      if (!past) {                                       // 回到首屏区域：收起卡片并清除取消标记，再次下滚可重新触发
+        if (shown) setShown(false);
+        dismissed = false;
+      } else if (past && !shown && !dismissed) {
+        setShown(true);
+      }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
@@ -500,6 +518,7 @@
     renderFlow();
     renderCities();
     initNav();
+    renderNavAction();
     animateHero();
     initReveal();
     initAiFloat();

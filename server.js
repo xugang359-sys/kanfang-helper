@@ -161,6 +161,24 @@ function apiRoute(req, res, url, body) {
     return tokens()[t] || null;
   };
 
+  // 预验证（不签发 token、不落盘）：登录校验邮箱已注册且密码正确；注册校验邮箱可用
+  // 供登录/注册页在弹协议确认框之前先验证，避免无谓弹窗
+  if (url === '/api/auth/verify') {
+    const { email, pass, intent } = body || {};
+    const em = String(email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(em)) return j(400, { ok: false, err: '邮箱格式不正确' });
+    const u = users()[em];
+    if (intent === 'register') {
+      if (u) return j(409, { ok: false, err: '该邮箱已注册，请直接登录' });
+      return j(200, { ok: true, available: true });
+    }
+    // 默认按登录校验
+    if (!u) return j(404, { ok: false, err: '该邮箱尚未注册' });
+    if (u.enabled === false) return j(403, { ok: false, err: '该账号已被禁用，请联系管理员' });
+    if (hashPass(pass || '', u.salt) !== u.passHash) return j(401, { ok: false, err: '密码错误' });
+    return j(200, { ok: true, valid: true });
+  }
+
   // 注册：昵称 + 邮箱 + 密码 + 所在城市 → 创建账号并签发 token（城市绑定为账号默认城市）
   if (url === '/api/auth/register') {
     const { name, email, pass, city } = body || {};
@@ -406,14 +424,9 @@ function apiRoute(req, res, url, body) {
   if (url === '/api/config' && req.method === 'GET') {
     const em = authEmail();
     if (!em) return j(401, { ok: false, err: '未登录' });
-    const cfg = readConfig();
-    // 普通用户脱敏：不返回任何密钥类配置（平台 Key 仅在服务端使用，避免泄露）
-    if (!isAdminEmail(em)) {
-      const safe = {};
-      for (const k in cfg) if (!/key|secret|token|llm|amap|news/i.test(k)) safe[k] = cfg[k];
-      return j(200, { ok: true, config: safe });
-    }
-    return j(200, { ok: true, config: cfg });
+    // 全局配置全员下发：前端各功能（高德地图/新闻资讯/AI 大模型）均在浏览器端直连 API，依赖本地 Key，
+    // 因此管理员在配置清单维护的 Key 需下发给所有登录账号，任何设备登录后即可统一应用
+    return j(200, { ok: true, config: readConfig() });
   }
   if (url === '/api/config' && req.method === 'PUT') {
     const em = authEmail();
@@ -575,9 +588,17 @@ function apiRoute(req, res, url, body) {
     // 优先使用前端本次填写的 Key（管理员测试用），否则读取全局配置（管理员统一维护）；普通用户强制使用全局配置
     const cfg = readConfig();
     const raw = String((isAdmin && bodyKey ? bodyKey : cfg.llm) || '').trim();
-    const key = raw.replace(/^trae:/i, '').trim();
-    if (!key) return j(200, { ok: false, err: '未配置 AI 大模型 API Key（系统管理 → 配置清单中维护，前缀 trae:）' });
-    const modelName = String(model || '').trim() || 'trae-gpt-4o';
+    // 解析平台前缀（与前端 parseLLMConfig 保持一致）：trae: / openai: / deepseek: / glm:，无前缀默认 openai
+    const pi = raw.indexOf(':');
+    let provider = 'openai', key = raw;
+    if (pi > 0 && /^[a-z]+$/i.test(raw.slice(0, pi))) {
+      provider = raw.slice(0, pi).toLowerCase();
+      key = raw.slice(pi + 1);
+    }
+    key = String(key).trim();
+    if (!key) return j(200, { ok: false, err: '未配置 AI 大模型 API Key（系统管理 → 配置清单中维护）' });
+    // 模型名：优先前端传入（管理员测试），否则取全局配置 llmModel，再否则按平台默认
+    const modelName = String(model || cfg.llmModel || '').trim() || (provider === 'trae' ? 'trae-gpt-4o' : 'gpt-4o-mini');
     const payload = JSON.stringify({
       model: modelName,
       messages,
@@ -586,8 +607,17 @@ function apiRoute(req, res, url, body) {
     });
     let done = false;
     const finish = (code, obj) => { if (!done) { done = true; j(code, obj); } };
-    const up = https.request('https://api.trae.cn/v1/chat/completions', {
+    // 各平台 OpenAI 兼容转发端点（按 key 前缀路由，管理员配置任意平台 key 全员可用）
+    const UPSTREAM = {
+      'trae':     { host: 'api.trae.cn',      path: '/v1/chat/completions' },
+      'openai':   { host: 'api.openai.com',   path: '/v1/chat/completions' },
+      'deepseek': { host: 'api.deepseek.com', path: '/v1/chat/completions' },
+      'glm':      { host: 'open.bigmodel.cn', path: '/api/paas/v4/chat/completions' },
+    }[provider] || { host: 'api.openai.com', path: '/v1/chat/completions' };
+    const up = https.request({
+      hostname: UPSTREAM.host,
       method: 'POST',
+      path: UPSTREAM.path,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + key,
@@ -709,11 +739,24 @@ function tryListen(port) {
           }
         } else {
           const ext = path.extname(filePath).toLowerCase();
+          const isHtml = ext === '.html';
+          const stat = fs.statSync(filePath);
+          // ETag：基于文件大小 + 修改时间（内容不变则不变）
+          const etag = '"' + stat.size.toString(16) + '-' + Math.floor(stat.mtimeMs).toString(16) + '"';
           const headers = {
             'Content-Type': MIME[ext] || 'application/octet-stream',
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'ETag': etag,
             'Access-Control-Allow-Origin': '*',
+            // 缓存策略：HTML 每次回源校验（内容变化即 304/200），静态资源一年强缓存。
+            // 业务 JS/CSS 均带 ?v= 版本号，改动后 URL 变化自动绕过缓存；vendor 与图片等固定资源不常变，可安全长缓存
+            'Cache-Control': isHtml ? 'no-cache' : 'public, max-age=31536000, immutable',
           };
+          // HTML 条件请求：内容未变直接 304，省去重复下载 HTML
+          if (isHtml && req.headers['if-none-match'] === etag) {
+            res.writeHead(304, headers);
+            res.end();
+            return;
+          }
           // gzip 压缩文本类资源，加速海外/弱网加载
           if (COMPRESSIBLE.has(ext) && (req.headers['accept-encoding'] || '').includes('gzip')) {
             const gz = gzipIfWorth(filePath, data);

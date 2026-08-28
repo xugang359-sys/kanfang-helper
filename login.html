@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#F5F5F7">
 <title>优宅邦 NestWise · 登录 / 注册</title>
 <meta name="description" content="优宅邦 NestWise · 专业购房决策门户 · 登录后使用">
-<link rel="stylesheet" href="css/auth.css?v=20260827d">
+<link rel="stylesheet" href="css/auth.css?v=20260828e">
 </head>
 <body>
 <div class="auth-bg" aria-hidden="true"></div>
@@ -29,7 +29,6 @@
 
   <!-- 标题区（随登录/注册切换） -->
   <h1 class="auth-title" id="authTitle">欢迎回来</h1>
-  <p class="auth-sub" id="authSub">登录后继续你的购房决策</p>
 
   <div class="auth-card">
     <div class="auth-tabs" id="authTabs">
@@ -79,11 +78,11 @@
       </div>
     </form>
 
-    <p class="a-foot" id="aFoot">还没有账号？<a id="aSwitch" data-go="register">立即注册</a></p>
+    <p class="a-foot" id="aFoot"><span id="aFootPre">还没有账号？</span><a id="aSwitch" data-go="register">立即注册</a></p>
   </div>
 
-  <!-- 注册福利提示 -->
-  <p class="auth-quota">
+  <!-- 注册福利提示（仅注册模式展示） -->
+  <p class="auth-quota" id="authQuota" style="display:none;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 11-13h-7l1-7Z"/></svg>
     新用户注册即送 <b>20 次</b> AI 智能对话额度
   </p>
@@ -93,8 +92,8 @@
   <aside class="auth-intro" aria-label="关于优宅邦">
     <div class="ai-intro-inner">
       <p class="ai-eyebrow">优宅邦 NestWise</p>
-      <h2 class="ai-title">让每一次购房决策，<br>都更有底气</h2>
-      <p class="ai-lead">AI 购房助手 × 六维匹配度 × 全周期管理 —— 一站式专业购房决策平台，助你高效、理性地完成置业大事。</p>
+      <h2 class="ai-title">让 AI 助你，<br>做出更有底气的购房决策</h2>
+      <p class="ai-lead">7×24 小时 AI 购房管家「贾维斯」，懂政策、懂行情、更懂你 —— 从预算规划到签约落地，全周期 AI 护航，每一次决策都有底气。</p>
       <ul class="ai-points">
         <li>
           <span class="ai-p-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M8 9h8M8 13h5"/></svg></span>
@@ -122,9 +121,23 @@
   </aside>
 </div>
 
+<!-- 协议确认弹窗（Apple 风格 Alert） -->
+<div class="a-mask" id="termsMask" hidden>
+  <div class="a-alert" role="alertdialog" aria-modal="true" aria-labelledby="termsTitle" aria-describedby="termsMsg">
+    <div class="a-alert-body">
+      <h2 class="a-alert-title" id="termsTitle">阅读并同意协议</h2>
+      <p class="a-alert-msg" id="termsMsg">您还未勾选「我已阅读并同意《服务条款》和《隐私政策》」。<br>确认已阅读并同意，即可继续登录 / 注册。</p>
+    </div>
+    <div class="a-alert-actions">
+      <button type="button" class="a-alert-btn" id="termsCancel">取消</button>
+      <button type="button" class="a-alert-btn primary" id="termsOk">同意并继续</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/store.js?v=20260901"></script>
-<script src="js/modules/auth.js?v=20260828d"></script>
+<script src="js/modules/auth.js?v=20260828e"></script>
 <script src="js/modules/sync.js?v=20260828d"></script>
-<script src="js/auth-page.js?v=20260827e"></script>
+<script src="js/auth-page.js?v=20260828h"></script>
 </body>
 </html>

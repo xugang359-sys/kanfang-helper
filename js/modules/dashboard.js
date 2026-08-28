@@ -80,6 +80,20 @@ window.DashboardMod = (function() {
         </div>
       </div>
 
+      <!-- AI 宣传横幅 -->
+      <div class="ai-banner" onclick="App.navigate('chat')" role="button" tabindex="0" aria-label="向 AI 购房管家提问">
+        <div class="ai-banner-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
+        </div>
+        <div class="ai-banner-text">
+          <b>AI 购房管家「贾维斯」已就绪</b>
+          <span>预算、政策、匹配度，随时问我 —— 聪明决策，从一问开始</span>
+        </div>
+        <div class="ai-banner-btn">向贾维斯提问
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </div>
+      </div>
+
       <!-- 期望概览 -->
       <div class="card">
         <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">

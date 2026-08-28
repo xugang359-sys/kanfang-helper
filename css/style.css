@@ -254,8 +254,9 @@ input:focus, select:focus, textarea:focus {
 /* 顶栏省市级联：紧凑宽度（配色继承 .topbar-city select 深色样式） */
 .top-cascade { gap: 4px; }
 .top-cascade select { padding: 4px 8px; font-size: 12px; border-radius: 6px; }
-.top-cascade .top-prov { max-width: 96px; }
-.top-cascade .top-city { max-width: 140px; }
+/* 省市级联同宽，消除城市下拉因 min-width:128px 而偏长的问题 */
+.top-cascade .top-prov,
+.top-cascade .top-city { width: 100px; max-width: 100px; min-width: 0; }
 
 /* 区位分析：独占一行"查询城市"的省市级联与同表单其他字段完全对齐
    （等宽：各占半列 337px；等高：与 form-item input/select 同为 padding 10px 13px + 14px 字号；
@@ -485,12 +486,12 @@ input:focus, select:focus, textarea:focus {
   /* 移动端顶栏紧凑化：品牌只留 Logo、城市下拉收窄，保证右上角额度徽章完整可见 */
   .topbar-brand .brand-text { display: none; }
   .topbar-city .city-label { display: none; }
-  .topbar-city .top-prov { max-width: 76px; min-width: 0; }
-  .topbar-city .top-city { max-width: 92px; min-width: 0; } /* 覆盖 .cascade-city 的 min-width:128px */
+  .topbar-city .top-prov,
+  .topbar-city .top-city { width: 84px; max-width: 84px; min-width: 0; } /* 省市级联同宽 */
 }
 @media (max-width: 360px) {
-  .topbar-city .top-prov { max-width: 60px; min-width: 0; }
-  .topbar-city .top-city { max-width: 72px; min-width: 0; }
+  .topbar-city .top-prov,
+  .topbar-city .top-city { width: 64px; max-width: 64px; min-width: 0; }
 }
 
 .user-menu { position: relative; flex: 0 0 auto; display: flex; align-items: center; }
@@ -2155,6 +2156,9 @@ html.is-admin .nav-trigger.admin-only { display: inline-flex !important; }
 .chat-icon-btn:hover { background: var(--bg-soft); color: var(--text-1); }
 .chat-icon-btn:active { transform: scale(0.92); }
 
+/* 顶栏"清空"按钮：无消息时禁用淡化（始终渲染占位，保证顶栏布局不跳变） */
+.chat-clear-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; box-shadow: none; }
+
 /* 对话记录面板：对话面板内部从右侧弹出的覆盖层（与对话面板边框对齐） */
 .chat-history {
   position: absolute;
@@ -2441,3 +2445,37 @@ html.is-admin .nav-trigger.admin-only { display: inline-flex !important; }
 
 /* 额度管理表格：数字列等宽右对齐 */
 .table .num { font-family: var(--font-num); text-align: right; white-space: nowrap; }
+
+/* ===== AI 宣传横幅（看房画像首页顶部） ===== */
+.ai-banner {
+  display: flex; align-items: center; gap: 14px;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: linear-gradient(120deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(0, 113, 227, 0.25);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.ai-banner:hover { transform: translateY(-1px); box-shadow: 0 16px 34px rgba(0, 113, 227, 0.32); }
+.ai-banner:active { transform: translateY(0); }
+.ai-banner-icon {
+  flex: 0 0 auto; width: 48px; height: 48px; border-radius: 14px;
+  background: rgba(255,255,255,0.14);
+  display: flex; align-items: center; justify-content: center;
+}
+.ai-banner-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ai-banner-text b { font-size: 15px; font-weight: 600; letter-spacing: 0.2px; }
+.ai-banner-text span { font-size: 13px; color: rgba(255,255,255,0.82); }
+.ai-banner-btn {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28);
+  transition: background 0.18s;
+}
+.ai-banner:hover .ai-banner-btn { background: rgba(255,255,255,0.26); }
+@media (max-width: 640px) {
+  .ai-banner { flex-wrap: wrap; padding: 14px; }
+  .ai-banner-btn { width: 100%; justify-content: center; }
+}

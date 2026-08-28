@@ -89,8 +89,8 @@ window.SyncMod = (function() {
   function logout() { clearTimeout(timer); }
 
   /* ========== 全局 API 配置（管理员维护，全员共享） ========== */
-  // 后端 config 键 → 本地 localStorage 键 映射
-  const CFG_MAP = { amapJs: 'k_amap_js', amapSrv: 'k_amap_srv', newsApi: 'k_news_api' };
+  // 后端 config 键 → 本地 localStorage 键 映射（键名与服务端保持一致：服务端 /api/llm/chat 读取 cfg.llm）
+  const CFG_MAP = { amapJs: 'k_amap_js', amapSrv: 'k_amap_srv', newsApi: 'k_news_api', llm: 'k_llm_api', llmModel: 'k_llm_model' };
   function cfgToLocal(config) {
     if (!config) return;
     Object.entries(CFG_MAP).forEach(([ck, lk]) => {

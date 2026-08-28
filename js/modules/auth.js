@@ -67,6 +67,13 @@ window.AuthMod = (function() {
     } catch(e) { return { ok: false, err: '网络请求失败' }; }
   }
 
+  // 预验证（不建立会话、不落盘）：登录校验邮箱已注册且密码正确；注册校验邮箱可用
+  // 供登录/注册页在弹协议确认框之前先验证
+  async function verify(email, pass, intent) {
+    const r = await api('auth/verify', { email: (email || '').trim(), pass: pass || '', intent: intent || 'login' });
+    return { ok: r.ok, err: r.err || '' };
+  }
+
   async function register(name, email, pass, city) {
     const r = await api('auth/register', { name, email, pass, city: city || '' });
     if (!r.ok) return { ok: false, err: r.err || '注册失败' };
@@ -97,5 +104,5 @@ window.AuthMod = (function() {
     if (window.SyncMod && typeof SyncMod.clearLocal === 'function') SyncMod.clearLocal();
   }
 
-  return { register, login, logout, updateProfile, isLoggedIn, currentUser, isAdmin, emailOk, getToken, logCity };
+  return { register, login, logout, updateProfile, isLoggedIn, currentUser, isAdmin, emailOk, getToken, logCity, verify };
 })();
