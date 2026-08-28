@@ -426,6 +426,28 @@ window.AdminMod = (function() {
   }
 
   // 点击省份下钻：加载该省（含下级市）geojson，切换为城市层地图
+  // 城市边界持久缓存（IndexedDB）：下钻成功的省份二次访问无需联网，抗 DataV 免费接口抽风/超时
+  const _geoDB = (() => {
+    let db = null;
+    const open = () => new Promise((res, rej) => {
+      const req = indexedDB.open('house_hunter_geo', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('province', { keyPath: 'adcode' });
+      req.onsuccess = () => { db = req.result; res(db); };
+      req.onerror = () => rej(req.error);
+    });
+    const get = adcode => open().then(d => new Promise((res, rej) => {
+      const r = d.transaction('province').objectStore('province').get(String(adcode));
+      r.onsuccess = () => res(r.result ? r.result.geo : null);
+      r.onerror = () => rej(r.error);
+    })).catch(() => null);
+    const put = (adcode, geo) => open().then(d => new Promise(res => {
+      const tx = d.transaction('province', 'readwrite');
+      tx.objectStore('province').put({ adcode: String(adcode), geo });
+      tx.oncomplete = res;
+    })).catch(() => {});
+    return { get, put };
+  })();
+
   function drillToProvince(chart, provName, adcode, byCity) {
     Utils.toast('正在加载 ' + provName + ' 城市数据…', 'info');
     const geoName = 'drill_' + adcode;
@@ -454,30 +476,34 @@ window.AdminMod = (function() {
       if (_mapBackBtn) _mapBackBtn.style.display = '';
     };
     if (_provGeoCache[adcode]) { done(_provGeoCache[adcode]); return; }
-    // 依次尝试多个数据源（v3 主源 → v2 备用），任一失败自动切换，避免单源故障导致下钻失败
-    const sources = [
-      'https://geo.datav.aliyun.com/areas_v3/bound/' + adcode + '_full.json',
-      'https://geo.datav.aliyun.com/areas_v2/bound/' + adcode + '_full.json',
-    ];
-    const loadGeo = i => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 10000);
-      return fetch(sources[i], { signal: ctrl.signal })
-        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-        .finally(() => clearTimeout(timer));
-    };
-    const trySources = i => loadGeo(i)
-      .then(geo => { _provGeoCache[adcode] = geo; done(geo); })
-      .catch(() => (i + 1 < sources.length ? trySources(i + 1) : Promise.reject(new Error('all sources failed'))));
-    trySources(0).catch(() => {
-      // 离线降级：用本地 geojson 中的中心点放大到该省份区域
-      const f = (_chinaGeo && _chinaGeo.features || []).find(x => x.properties.name === provName);
-      if (f && f.properties.center) {
-        chart.setOption({ series: [{ id: 'province', center: f.properties.center, zoom: 4.5 }] });
-        Utils.toast('城市边界数据加载失败，已放大到 ' + provName, 'warn');
-      } else {
-        Utils.toast('城市边界数据加载失败', 'warn');
-      }
+    // 持久缓存命中：DataV 不可用/离线时仍可下钻（首次加载成功即写入缓存）
+    _geoDB.get(adcode).then(cached => {
+      if (cached) { _provGeoCache[adcode] = cached; done(cached); return; }
+      // 依次尝试多个数据源（v3 主源 → v2 备用），任一失败自动切换，避免单源故障导致下钻失败
+      const sources = [
+        'https://geo.datav.aliyun.com/areas_v3/bound/' + adcode + '_full.json',
+        'https://geo.datav.aliyun.com/areas_v2/bound/' + adcode + '_full.json',
+      ];
+      const loadGeo = i => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000);
+        return fetch(sources[i], { signal: ctrl.signal })
+          .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .finally(() => clearTimeout(timer));
+      };
+      const trySources = i => loadGeo(i)
+        .then(geo => { _provGeoCache[adcode] = geo; _geoDB.put(adcode, geo); done(geo); })
+        .catch(() => (i + 1 < sources.length ? trySources(i + 1) : Promise.reject(new Error('all sources failed'))));
+      trySources(0).catch(() => {
+        // 离线降级：用本地 geojson 中的中心点放大到该省份区域
+        const f = (_chinaGeo && _chinaGeo.features || []).find(x => x.properties.name === provName);
+        if (f && f.properties.center) {
+          chart.setOption({ series: [{ id: 'province', center: f.properties.center, zoom: 4.5 }] });
+          Utils.toast('城市边界数据加载失败（网络异常），已放大到 ' + provName + '；再次点击可重试', 'warn', 4000);
+        } else {
+          Utils.toast('城市边界数据加载失败（网络异常），请稍后重试', 'warn', 4000);
+        }
+      });
     });
   }
 

@@ -70,7 +70,7 @@ window.App = (function() {
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = src + '?v=20260928';
+      s.src = src + '?v=20260929';
       s.onload = () => resolve();
       s.onerror = () => reject(new Error('模块加载失败: ' + src));
       document.head.appendChild(s);
