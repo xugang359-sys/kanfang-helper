@@ -298,25 +298,31 @@ window.NewsMod = (function() {
     else srcHtml = '<span class="tag tag-warn tag-sm">暂无数据</span>';
     box.innerHTML = `
       <div class="card">
-        <div class="filter-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:2px;">
-          <input type="text" id="nKw" placeholder="搜索资讯标题 / 内容 / 来源..." value="${kw}" onkeydown="if(event.key==='Enter')NewsMod.doSearch()" style="flex:1;min-width:170px;">
-          <button class="btn btn-primary btn-sm" onclick="NewsMod.doSearch()">搜索</button>
-          ${(kw || curTag || curMonth || curCat || curFav) ? `<button class="btn btn-ghost btn-sm" onclick="NewsMod.resetFilter()">重置</button>` : ''}
+        <div class="n-filter-panel">
+          <div class="filter-bar" style="flex-wrap:wrap;gap:8px;margin-bottom:2px;">
+            <input type="text" id="nKw" placeholder="搜索资讯标题 / 内容 / 来源..." value="${kw}" onkeydown="if(event.key==='Enter')NewsMod.doSearch()" style="flex:1;min-width:170px;">
+            <button class="btn btn-primary btn-sm" onclick="NewsMod.doSearch()">搜索</button>
+            ${(kw || curTag || curMonth || curCat || curFav) ? `<button class="btn btn-ghost btn-sm" onclick="NewsMod.resetFilter()">重置</button>` : ''}
+          </div>
+          <div class="n-filter-row">
+            <span class="n-filter-label">类型</span>${catChips}
+          </div>
+          ${monthChips ? `<div class="n-filter-row">
+            <span class="n-filter-label">月份</span>${monthChips}
+          </div>` : ''}
+          <div class="n-filter-row">
+            <span class="n-filter-label">热门</span>${tagChips}
+          </div>
+          <div class="n-filter-row">
+            <span class="n-filter-label">收藏</span>
+            <a class="chip ${curFav?'on':''}" data-fav="1" style="display:inline-flex;align-items:center;gap:5px;">${ic('star',13)} 我的收藏${getFavs().length?` <span class="tag tag-sm tag-primary">${getFavs().length}</span>`:''}</a>
+            <span style="font-size:11.5px;color:var(--text-4);">点击星标即可收藏资讯</span>
+          </div>
         </div>
-        <div class="n-filter-row">
-          <span class="n-filter-label">类型</span>${catChips}
-        </div>
-        ${monthChips ? `<div class="n-filter-row">
-          <span class="n-filter-label">月份</span>${monthChips}
-        </div>` : ''}
-        <div class="n-filter-row">
-          <span class="n-filter-label">热门</span>${tagChips}
-        </div>
-        <div class="n-filter-row">
-          <span class="n-filter-label">收藏</span>
-          <a class="chip ${curFav?'on':''}" data-fav="1" style="display:inline-flex;align-items:center;gap:5px;">${ic('star',13)} 我的收藏${getFavs().length?` <span class="tag tag-sm tag-primary">${getFavs().length}</span>`:''}</a>
-          <span style="font-size:11.5px;color:var(--text-4);">点击星标即可收藏资讯</span>
-        </div>
+        <button type="button" class="m-filter-btn" onclick="NewsMod.openFilter()">
+          ${ic('filter', 15)} 筛选资讯
+          ${filterCount() ? `<span class="m-filter-count">${filterCount()}</span>` : ''}
+        </button>
         <div class="n-src" style="margin-top:6px;padding-top:10px;border-top:1px dashed var(--border-light);">
           ${srcHtml}
           <span style="margin-left:6px;">共 <strong>${items.length}</strong> 条 · 均为真实资讯</span>
@@ -453,7 +459,101 @@ window.NewsMod = (function() {
   }
   function resetFilter() { curCat = ''; curMonth = ''; curTag = ''; curFav = false; kw = ''; renderList(false); }
 
+  // ===== 移动端筛选抽屉（复用 more-sheet 底部抽屉样式） =====
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // 已启用筛选条件数（按钮角标）
+  function filterCount() { return (curCat ? 1 : 0) + (curMonth ? 1 : 0) + (curTag ? 1 : 0) + (curFav ? 1 : 0) + (kw ? 1 : 0); }
+  function ensureFilterSheet() {
+    if (document.getElementById('newsFilterMask')) return;
+    document.body.insertAdjacentHTML('beforeend', `
+      <div class="more-mask" id="newsFilterMask" style="display:none" aria-hidden="true">
+        <div class="more-sheet" id="newsFilterSheet" role="dialog" aria-label="筛选资讯">
+          <div class="more-sheet-handle"></div>
+          <div class="more-sheet-head">
+            <h3>筛选资讯</h3>
+            <button type="button" class="more-sheet-close" onclick="NewsMod.closeFilter()">✕</button>
+          </div>
+          <div class="filter-sheet-body" id="newsFilterBody"></div>
+        </div>
+      </div>`);
+    document.getElementById('newsFilterMask').addEventListener('click', e => {
+      if (e.target.id === 'newsFilterMask') closeFilter();
+    });
+  }
+  function renderFilterSheet() {
+    const body = document.getElementById('newsFilterBody');
+    if (!body) return;
+    const months = monthOptions();
+    const tagChips = HOT_TAGS.map(t =>
+      `<button type="button" class="f-chip ${curTag === t ? 'on' : ''}" data-tag="${t}" onclick="NewsMod.toggleTagM('${t}')">#${t}</button>`).join('');
+    body.innerHTML = `
+      <div class="filter-sheet-label">搜索</div>
+      <input type="text" id="nKwM" placeholder="搜索资讯标题 / 内容 / 来源..." value="${esc(kw)}">
+      <div class="filter-sheet-label">类型</div>
+      <select id="nCatM">
+        <option value="">全部类型</option>
+        ${CATS.map(c => `<option value="${c.id}" ${curCat === c.id ? 'selected' : ''}>${c.label}</option>`).join('')}
+      </select>
+      <div class="filter-sheet-label">月份</div>
+      <select id="nMonthM">
+        <option value="">全部月份</option>
+        ${months.map(m => `<option value="${m}" ${curMonth === m ? 'selected' : ''}>${m.slice(0, 4)}年${Number(m.slice(5))}月</option>`).join('')}
+      </select>
+      <div class="filter-sheet-label">热门标签</div>
+      <div class="f-chips">${tagChips}</div>
+      <div class="filter-sheet-label">收藏</div>
+      <label class="f-switch-row">
+        <span>只看我的收藏${getFavs().length ? ` <b style="color:var(--primary);">${getFavs().length}</b>` : ''}</span>
+        <input type="checkbox" id="nFavM" class="f-check" ${curFav ? 'checked' : ''}>
+        <span class="f-switch"></span>
+      </label>
+      <div class="filter-sheet-actions">
+        <button class="btn btn-ghost" onclick="NewsMod.clearFilterM()">重置</button>
+        <button class="btn btn-primary" onclick="NewsMod.applyFilterM()">应用筛选</button>
+      </div>`;
+  }
+  function toggleTagM(t) {
+    curTag = curTag === t ? '' : t;
+    document.querySelectorAll('#newsFilterBody .f-chip').forEach(el => el.classList.toggle('on', el.dataset.tag === curTag));
+  }
+  function openFilter() {
+    ensureFilterSheet();
+    renderFilterSheet();
+    const mask = document.getElementById('newsFilterMask');
+    mask.style.display = 'block';
+    mask.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => mask.classList.add('show'));
+    document.body.style.overflow = 'hidden';
+  }
+  function closeFilter() {
+    const mask = document.getElementById('newsFilterMask');
+    if (!mask) return;
+    mask.classList.remove('show');
+    mask.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    setTimeout(() => { mask.style.display = 'none'; }, 320);
+  }
+  function applyFilterM() {
+    curCat = document.getElementById('nCatM').value;
+    curMonth = document.getElementById('nMonthM').value;
+    curFav = document.getElementById('nFavM').checked;
+    kw = document.getElementById('nKwM').value.trim();
+    closeFilter();
+    renderList(false);
+  }
+  function clearFilterM() {
+    curCat = ''; curMonth = ''; curTag = ''; curFav = false; kw = '';
+    closeFilter();
+    renderList(false);
+  }
+  // 个人中心「我的收藏」入口：直接进入资讯收藏筛选列表
+  function openFavs() {
+    curCat = ''; curMonth = ''; curTag = ''; kw = ''; curFav = true; view = 'list';
+    render();
+  }
+
   return {
-    render, openDetail, backToList, toggleFav, shareItem, setTime, setMonth, doSearch, resetFilter, testSource
+    render, openDetail, backToList, toggleFav, shareItem, setTime, setMonth, doSearch, resetFilter, testSource,
+    openFilter, closeFilter, applyFilterM, clearFilterM, toggleTagM, openFavs, getFavs, filterCount
   };
 })();

@@ -52,26 +52,14 @@ window.RecordsMod = (function() {
       </div>
 
       <div class="filter-bar">
-        <input type="text" placeholder="搜索小区/地址/总结..." id="fKw" value="${f.kw}">
-        <select id="fProv" onchange="RecordsMod.onFltProv()" style="max-width:110px;">
-          <option value="">全部省份</option>
-          ${Object.keys(Store.PROVINCES).map(p=>`<option ${f.prov===p?'selected':''}>${p}</option>`).join('')}
-        </select>
-        <select id="fCity" onchange="RecordsMod.onFltCity()" style="max-width:120px;">
-          <option value="">全部城市</option>
-          ${f.prov ? (Store.PROVINCES[f.prov]||[]).map(c=>`<option ${f.city===c?'selected':''}>${c}</option>`).join('') : ''}
-        </select>
-        <select id="fDistrict">
-          <option value="">全部区域</option>
-          ${f.city ? (Store.CITIES[f.city]||[]).map(d=>`<option ${f.district===d?'selected':''}>${d}</option>`).join('') : ''}
-        </select>
-        <select id="fIntention">
-          <option value="">全部意向</option>
-          ${['强烈意向','比较有意向','一般','不太满意','直接排除'].map(i=>`<option ${f.intention===i?'selected':''}>${i}</option>`).join('')}
-        </select>
+        ${filterFormHTML(f, '')}
         <button class="btn btn-primary btn-sm" onclick="RecordsMod.doFilter()">筛选</button>
         <button class="btn btn-ghost btn-sm" onclick="RecordsMod.clearFilter()">重置</button>
       </div>
+      <button type="button" class="m-filter-btn" onclick="RecordsMod.openFilter()">
+        ${ic('filter', 15)} 筛选房源
+        ${list.length ? `<span class="m-filter-count">${list.length}</span>` : ''}
+      </button>
 
       <div style="margin-top:4px;">
         ${list.length === 0 ? `
@@ -87,18 +75,42 @@ window.RecordsMod = (function() {
     App.setContent(html);
   }
 
-  // 省份变化：联动城市下拉并清空已选城市/区域
-  function onFltProv() {
-    curFilter.prov = document.getElementById('fProv').value;
+  // 生成筛选表单字段（suffix 区分桌面端 filter-bar 与移动端抽屉，避免 id 冲突）
+  function filterFormHTML(f, suffix) {
+    const kw = 'fKw' + suffix, prov = 'fProv' + suffix, city = 'fCity' + suffix,
+          dist = 'fDistrict' + suffix, intent = 'fIntention' + suffix;
+    return `
+      <input type="text" placeholder="搜索小区/地址/总结..." id="${kw}" value="${f.kw}">
+      <select id="${prov}" onchange="RecordsMod.onFltProv('${suffix}')">
+        <option value="">全部省份</option>
+        ${Object.keys(Store.PROVINCES).map(p=>`<option ${f.prov===p?'selected':''}>${p}</option>`).join('')}
+      </select>
+      <select id="${city}" onchange="RecordsMod.onFltCity('${suffix}')">
+        <option value="">全部城市</option>
+        ${f.prov ? (Store.PROVINCES[f.prov]||[]).map(c=>`<option ${f.city===c?'selected':''}>${c}</option>`).join('') : ''}
+      </select>
+      <select id="${dist}">
+        <option value="">全部区域</option>
+        ${f.city ? (Store.CITIES[f.city]||[]).map(d=>`<option ${f.district===d?'selected':''}>${d}</option>`).join('') : ''}
+      </select>
+      <select id="${intent}">
+        <option value="">全部意向</option>
+        ${['强烈意向','比较有意向','一般','不太满意','直接排除'].map(i=>`<option ${f.intention===i?'selected':''}>${i}</option>`).join('')}
+      </select>`;
+  }
+
+  // 省份变化：联动城市下拉并清空已选城市/区域（桌面端重渲染主内容，移动端重渲染抽屉）
+  function onFltProv(suffix='') {
+    curFilter.prov = document.getElementById('fProv'+suffix).value;
     curFilter.city = '';
     curFilter.district = '';
-    renderList();
+    if (suffix === 'M') renderFilterSheet(); else renderList();
   }
   // 城市变化：联动区域下拉并清空已选区域
-  function onFltCity() {
-    curFilter.city = document.getElementById('fCity').value;
+  function onFltCity(suffix='') {
+    curFilter.city = document.getElementById('fCity'+suffix).value;
     curFilter.district = '';
-    renderList();
+    if (suffix === 'M') renderFilterSheet(); else renderList();
   }
 
   function renderListItem(r) {
@@ -145,6 +157,64 @@ window.RecordsMod = (function() {
   }
   function clearFilter() {
     curFilter = { prov:'', city:'', district:'', intention:'', kw:'' };
+    renderList();
+  }
+
+  // ============ 移动端筛选抽屉 ============
+  function ensureFilterSheet() {
+    if (document.getElementById('recFilterMask')) return;
+    document.body.insertAdjacentHTML('beforeend', `
+      <div class="more-mask" id="recFilterMask" style="display:none" aria-hidden="true">
+        <div class="more-sheet" id="recFilterSheet" role="dialog" aria-label="筛选房源">
+          <div class="more-sheet-handle"></div>
+          <div class="more-sheet-head">
+            <h3>筛选房源</h3>
+            <button type="button" class="more-sheet-close" onclick="RecordsMod.closeFilter()">✕</button>
+          </div>
+          <div class="filter-sheet-body" id="recFilterBody"></div>
+        </div>
+      </div>`);
+    document.getElementById('recFilterMask').addEventListener('click', e => {
+      if (e.target.id === 'recFilterMask') closeFilter();
+    });
+  }
+  function renderFilterSheet() {
+    const body = document.getElementById('recFilterBody');
+    if (!body) return;
+    body.innerHTML = `
+      ${filterFormHTML(curFilter, 'M')}
+      <div class="filter-sheet-actions">
+        <button class="btn btn-ghost" onclick="RecordsMod.clearFilterM()">重置</button>
+        <button class="btn btn-primary" onclick="RecordsMod.doFilterM()">应用筛选</button>
+      </div>`;
+  }
+  function openFilter() {
+    ensureFilterSheet();
+    renderFilterSheet();
+    const mask = document.getElementById('recFilterMask');
+    mask.style.display = 'block';
+    mask.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => mask.classList.add('show'));
+    document.body.style.overflow = 'hidden';
+  }
+  function closeFilter() {
+    const mask = document.getElementById('recFilterMask');
+    if (!mask) return;
+    mask.classList.remove('show');
+    mask.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    setTimeout(() => { mask.style.display = 'none'; }, 320);
+  }
+  function doFilterM() {
+    curFilter.kw = document.getElementById('fKwM').value.trim();
+    curFilter.district = document.getElementById('fDistrictM').value;
+    curFilter.intention = document.getElementById('fIntentionM').value;
+    closeFilter();
+    renderList();
+  }
+  function clearFilterM() {
+    curFilter = { prov:'', city:'', district:'', intention:'', kw:'' };
+    closeFilter();
     renderList();
   }
 
@@ -720,5 +790,5 @@ window.RecordsMod = (function() {
     if (r) view(recordId);
   }
 
-  return { render, renderList, doFilter, clearFilter, onFltProv, onFltCity, edit, quickAdd, goFullEdit, doSave, remove, doRemove, view, autoPrice, autoTotal, renderChecklistResult, KV, syncRecDistricts, openChecklistFor, saveModalCl };
+  return { render, renderList, doFilter, clearFilter, onFltProv, onFltCity, edit, quickAdd, goFullEdit, doSave, remove, doRemove, view, autoPrice, autoTotal, renderChecklistResult, KV, syncRecDistricts, openChecklistFor, saveModalCl, openFilter, closeFilter, doFilterM, clearFilterM };
 })();

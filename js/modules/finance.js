@@ -218,10 +218,12 @@ window.FinanceMod = (function() {
       </div>
       <div class="card" style="margin-top:16px;">
         <div class="card-title">${ic('trend')} 还款明细（前6期 + 后2期）</div>
-        <table style="width:100%;font-size:12.5px;" class="compare-table">
-          <thead><tr><th>期数</th><th>月供</th><th>本金</th><th>利息</th><th>剩余本金</th></tr></thead>
-          <tbody>${renderLoanDetail(loanB*10000, type==='business'?rateB:type==='fund'?(+document.getElementById('m_rateF').value||0)/100/12:rateB, n, method, type)}</tbody>
-        </table>
+        <div class="tbl-scroll">
+          <table style="width:100%;font-size:12.5px;" class="compare-table">
+            <thead><tr><th>期数</th><th>月供</th><th>本金</th><th>利息</th><th>剩余本金</th></tr></thead>
+            <tbody>${renderLoanDetail(loanB*10000, type==='business'?rateB:type==='fund'?(+document.getElementById('m_rateF').value||0)/100/12:rateB, n, method, type)}</tbody>
+          </table>
+        </div>
       </div>
     `;
     document.getElementById('m_result').innerHTML = html;
@@ -472,20 +474,22 @@ window.FinanceMod = (function() {
     const city = curCity();
     return `<div class="card">
       <div class="card-title">${ic('chart')} 请输入房源参数（最多比较3套）</div>
-      <table style="width:100%;" class="compare-table">
-        <thead><tr><th>参数</th>
-          ${[1,2,3].map(i=>`<th style="min-width:160px;">房源 ${i} <label style="margin-left:6px;"><input type="checkbox" id="t_en${i}" ${i===1?'checked':''} onchange="FinanceMod.calcTax()">启用</label></th>`).join('')}
-        </tr></thead>
-        <tbody>
-          <tr><th>总价（万元）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_p${i}" value="${[138,120,150][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
-          <tr><th>房屋类型</th>${[1,2,3].map(i=>`<td><select id="t_t${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="new">新房</option><option value="old" selected>二手房</option></select></td>`).join('')}</tr>
-          <tr><th>面积（㎡）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_a${i}" value="${[98,92,110][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
-          <tr><th>是否首套</th>${[1,2,3].map(i=>`<td><select id="t_f${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
-          <tr><th>满二（二手）</th>${[1,2,3].map(i=>`<td><select id="t_2${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
-          <tr><th>满五唯一（二手）</th>${[1,2,3].map(i=>`<td><select id="t_w${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="0">否</option><option value="1" ${i===1?'selected':''}>是</option></select></td>`).join('')}</tr>
-          <tr><th>中介费%（总）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_ag${i}" step="0.1" value="2.4" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
-        </tbody>
-      </table>
+      <div class="tbl-scroll">
+        <table style="width:100%;" class="compare-table">
+          <thead><tr><th>参数</th>
+            ${[1,2,3].map(i=>`<th style="min-width:150px;">房源 ${i} <label style="margin-left:6px;"><input type="checkbox" id="t_en${i}" ${i===1?'checked':''} onchange="FinanceMod.calcTax()">启用</label></th>`).join('')}
+          </tr></thead>
+          <tbody>
+            <tr><th>总价（万元）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_p${i}" value="${[138,120,150][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
+            <tr><th>房屋类型</th>${[1,2,3].map(i=>`<td><select id="t_t${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="new">新房</option><option value="old" selected>二手房</option></select></td>`).join('')}</tr>
+            <tr><th>面积（㎡）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_a${i}" value="${[98,92,110][i-1]}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
+            <tr><th>是否首套</th>${[1,2,3].map(i=>`<td><select id="t_f${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
+            <tr><th>满二（二手）</th>${[1,2,3].map(i=>`<td><select id="t_2${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="1" selected>是</option><option value="0">否</option></select></td>`).join('')}</tr>
+            <tr><th>满五唯一（二手）</th>${[1,2,3].map(i=>`<td><select id="t_w${i}" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" onchange="FinanceMod.calcTax()"><option value="0">否</option><option value="1" ${i===1?'selected':''}>是</option></select></td>`).join('')}</tr>
+            <tr><th>中介费%（总）</th>${[1,2,3].map(i=>`<td><input type="number" id="t_ag${i}" step="0.1" value="2.4" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;" oninput="FinanceMod.calcTax()"></td>`).join('')}</tr>
+          </tbody>
+        </table>
+      </div>
       <div class="callout" style="margin-top:14px;">
         <div class="callout-title">${ic('pin')} 税费政策说明</div>
         <p style="font-size:12px;">契税、个税、增值税为全国统一政策：契税 首套 90㎡以下1%、以上1.5%，二套 90㎡以下1%、以上2%，三套及以上3%；二手房满五唯一免征个税、满二免征增值税。维修基金按「${city}」标准约 ${getPolicy(city).repairFund}元/㎡ 计算，各城市可存在差异，以当地最新执行政策为准。</p>

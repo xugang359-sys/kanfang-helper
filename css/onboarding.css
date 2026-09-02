@@ -1,0 +1,186 @@
+/* ============================================
+   移动端引导页（onboarding.html）· Apple 风格
+   浅色弥散渐变 + 毛玻璃品牌区 + 弹簧入场
+   ============================================ */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: #F5F6FA;
+  color: #1D1D1F;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- 背景：柔和渐变 + 弥散光斑（模拟玻璃后透出的彩色光） ---- */
+.ob-bg {
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(120% 90% at 100% 0%, #EAF2FF 0%, transparent 55%),
+    radial-gradient(100% 80% at 0% 100%, #F3EEFF 0%, transparent 50%),
+    linear-gradient(180deg, #F6F9FE 0%, #F0F4FB 100%);
+}
+.ob-glow {
+  position: absolute; border-radius: 50%;
+  filter: blur(46px); opacity: .55;
+  will-change: transform;
+}
+.ob-glow-a { width: 300px; height: 300px; left: -90px; top: -60px;  background: rgba(77,163,255,.35); }
+.ob-glow-b { width: 240px; height: 240px; right: -70px; top: 120px; background: rgba(124,93,250,.22); }
+.ob-glow-c { width: 280px; height: 280px; left: 30%; bottom: -120px; background: rgba(52,199,89,.16); }
+
+/* ---- 页面布局 ---- */
+.ob-page {
+  position: relative; z-index: 1;
+  height: 100%;
+  display: flex; flex-direction: column;
+  padding: calc(env(safe-area-inset-top) + 22px) 26px calc(env(safe-area-inset-bottom) + 18px);
+}
+
+/* ---- 品牌区 ---- */
+.ob-brand {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  opacity: 0; transform: translateY(14px);
+  animation: obUp .7s cubic-bezier(0.22,1,0.36,1) .05s forwards;
+}
+.ob-logo {
+  width: 72px; height: 72px;
+  padding: 4px; border-radius: 21px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.66);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow: 0 18px 40px -18px rgba(0,80,180,.35), 0 2px 6px rgba(0,0,0,.04);
+}
+.ob-logo img { width: 64px; height: 64px; display: block; border-radius: 14px; }
+.ob-brand-name { font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+.ob-brand-name em {
+  font-style: normal; font-weight: 600; font-size: 15px;
+  color: #0071E3; margin-left: 6px; letter-spacing: .04em;
+}
+
+/* ---- 介绍语录 ---- */
+.ob-intro {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: center; gap: 22px;
+  padding: 12px 0;
+}
+.ob-title {
+  font-size: 30px; font-weight: 700; line-height: 1.18;
+  letter-spacing: -0.02em; color: #111;
+  opacity: 0; transform: translateY(16px);
+  animation: obUp .7s cubic-bezier(0.22,1,0.36,1) .14s forwards;
+}
+.ob-sub {
+  margin-top: -10px;
+  font-size: 15px; line-height: 1.6; color: #6E6E73;
+  opacity: 0; transform: translateY(16px);
+  animation: obUp .7s cubic-bezier(0.22,1,0.36,1) .22s forwards;
+}
+
+/* ---- 特性列表 ---- */
+.ob-points {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 12px;
+  opacity: 0; transform: translateY(18px);
+  animation: obUp .7s cubic-bezier(0.22,1,0.36,1) .3s forwards;
+}
+.ob-point {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,.66);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255,255,255,.9);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px -18px rgba(30,60,110,.25);
+}
+.ob-p-ico {
+  flex: 0 0 auto;
+  width: 42px; height: 42px; border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--pc, #0071E3);
+  background: var(--pb, rgba(0,113,227,.12));
+}
+.ob-p-ico svg { width: 21px; height: 21px; }
+.ob-p-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ob-p-txt b { font-size: 14.5px; font-weight: 650; color: #1D1D1F; }
+.ob-p-txt i { font-style: normal; font-size: 12.5px; color: #86868B; }
+
+/* ---- 底部操作区 ---- */
+.ob-actions {
+  display: flex; flex-direction: column; gap: 12px;
+  opacity: 0; transform: translateY(18px);
+  animation: obUp .7s cubic-bezier(0.22,1,0.36,1) .4s forwards;
+}
+.ob-btn {
+  width: 100%; height: 54px;
+  border: none; border-radius: 999px;
+  font-size: 17px; font-weight: 700; letter-spacing: .06em;
+  font-family: inherit; cursor: pointer;
+  transition: transform .16s cubic-bezier(0.22,1,0.36,1), box-shadow .2s ease, background .2s ease;
+}
+.ob-btn:active { transform: scale(0.97); }
+.ob-btn-primary {
+  background: linear-gradient(135deg, #3D9BFF 0%, #0071E3 100%);
+  color: #fff;
+  box-shadow: 0 14px 30px -12px rgba(0,113,227,.55);
+}
+.ob-btn-primary:active { box-shadow: 0 8px 18px -10px rgba(0,113,227,.5); }
+.ob-btn-ghost {
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(0,113,227,.28);
+  color: #0071E3;
+}
+.ob-btn-ghost:active { background: rgba(255,255,255,.95); }
+.ob-foot {
+  text-align: center;
+  font-size: 11.5px; color: #98989D;
+  padding-top: 4px;
+}
+.ob-foot a { color: #6E6E73; text-decoration: none; }
+.ob-foot a:active { opacity: .6; }
+
+/* ---- 入场动画（Apple 弹簧缓动） ---- */
+@keyframes obUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- 扫码登录状态横幅（桌面端二维码进入时显示） ---- */
+.ob-scan-banner {
+  display: none;
+  align-items: center; gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(0,113,227,.1);
+  border: 1px solid rgba(0,113,227,.22);
+  font-size: 13.5px; font-weight: 600; color: #0071E3;
+  animation: obUp .5s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+.ob-scan-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #0071E3;
+  animation: obScanPulse 1.2s ease-in-out infinite;
+}
+@keyframes obScanPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-scan-banner { animation: none; }
+  .ob-scan-dot { animation: none; }
+}
+
+/* ---- 无障碍：减少动态 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .ob-brand, .ob-title, .ob-sub, .ob-points, .ob-actions {
+    animation: none;
+    opacity: 1; transform: none;
+  }
+  .ob-btn { transition: none; }
+}

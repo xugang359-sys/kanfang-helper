@@ -17,6 +17,7 @@ window.App = (function() {
     workflow:     {mod: 'WorkflowMod',   label: '购房进度追踪'},
     finance:      {mod: 'FinanceMod',    label: '看房助手'},
     location:     {mod: 'LocationMod',   label: '区位分析'},
+    profile:      {mod: 'ProfileMod',    label: '个人中心'},
     // 系统管理 · 四个独立子模块（仅管理员）
     'admin-users': {mod: 'AdminMod', label: '用户管理', sub: 'users'},
     'admin-logs':  {mod: 'AdminMod', label: '访问日志', sub: 'logs'},
@@ -25,13 +26,12 @@ window.App = (function() {
     'admin-quota': {mod: 'AdminMod', label: '额度管理', sub: 'quota'},
   };
 
-  // 移动端Tabbar映射
+  // 移动端Tabbar映射（「更多」为抽屉入口，不走 navigate；个人中心为末位 tab）
   const MOBILE_TAB = {
     dashboard: 'dashboard',
     records: 'records',
     calendar: 'calendar',
-    finance: 'finance',
-    more: 'workflow',
+    profile: 'profile',
   };
 
   function setContent(html) {
@@ -66,11 +66,12 @@ window.App = (function() {
     'ReportMod':   'js/modules/report.js',
     'WorkflowMod': 'js/modules/workflow.js',
     'CompareMod':  'js/modules/compare.js',
+    'ProfileMod':  'js/modules/profile.js',
   };
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = src + '?v=20260929';
+      s.src = src + '?v=20261012';
       s.onload = () => resolve();
       s.onerror = () => reject(new Error('模块加载失败: ' + src));
       document.head.appendChild(s);
@@ -98,16 +99,15 @@ window.App = (function() {
       const on = (dd === 'assistantDD' && ['finance','location'].includes(view)) || (dd === 'adminDD' && view.indexOf('admin') === 0);
       el.classList.toggle('active', on);
     });
-    // 移动端Tabbar
+    // 移动端Tabbar 高亮：首页/房源/日程/AI助手 各自对应；其余功能归「更多」高亮
     document.querySelectorAll('.mobile-tabbar .tab').forEach(el => {
       const dataView = el.dataset.view;
-      // tools -> finance/aids/location/compare/recommend 归 tools组高亮
       let active = false;
-      if (dataView === 'dashboard') active = view==='dashboard';
-      else if (dataView === 'records') active = ['records','expectation'].includes(view);
-      else if (dataView === 'calendar') active = view==='calendar';
-      else if (dataView === 'tools') active = ['finance','location','compare','news'].includes(view);
-      else if (dataView === 'more') active = ['workflow'].includes(view);
+      if (dataView === 'dashboard') active = view === 'dashboard';
+      else if (dataView === 'records') active = view === 'records';
+      else if (dataView === 'calendar') active = view === 'calendar';
+      else if (dataView === 'profile') active = view === 'profile';
+      else if (dataView === 'more') active = ['expectation','news','compare','report','workflow','finance','location'].includes(view) || view.indexOf('admin') === 0;
       el.classList.toggle('active', active);
     });
     // 更新地址栏
@@ -184,14 +184,19 @@ window.App = (function() {
     const topbarEl = document.querySelector('.topbar');
     if (topbarEl) topbarEl.addEventListener('mouseleave', () => { leaveTimer = setTimeout(hideAllDD, 120); });
     window.addEventListener('resize', () => { document.querySelectorAll('.nav-trigger[data-dd]').forEach(tr => { const p = document.getElementById(tr.dataset.dd); if (p && p.classList.contains('show')) positionDD(tr, p); }); });
-    // 移动端Tabbar
+    // 移动端Tabbar 点击：更多→抽屉，其余→navigate
     document.querySelectorAll('#mobileTabbar .tab').forEach(el => {
       el.addEventListener('click', (e) => {
         e.preventDefault();
-        const map = MOBILE_TAB[el.dataset.view] || 'dashboard';
-        navigate(map);
+        const dv = el.dataset.view;
+        if (dv === 'more') { openMore(); return; }
+        navigate(MOBILE_TAB[dv] || dv);
       });
     });
+    // 更多抽屉：遮罩点击 / 关闭按钮 / 功能入口
+    const moreMask = document.getElementById('moreMask');
+    if (moreMask) moreMask.addEventListener('click', (e) => { if (e.target === moreMask) closeMore(); });
+    renderMoreSheet();
     // 模态框遮罩点击关闭
     document.getElementById('modalMask').addEventListener('click', (e) => {
       if (e.target.id === 'modalMask') Utils.closeModal();
@@ -251,8 +256,8 @@ window.App = (function() {
             ${avatarHTML(u, 40)}
             <div class="user-dd-meta"><strong>${esc(u.name || '')}</strong><small>${esc(u.email)} · ${u.isAdmin ? '管理员' : '普通用户'}</small></div>
           </div>
-          <button type="button" class="user-dd-item user-dd-action" onclick="App.openProfile()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>个人资料
+          <button type="button" class="user-dd-item user-dd-action" onclick="App.navigate('profile')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>个人中心
           </button>
           ${u.isAdmin && !isWide ? '<button type="button" class="user-dd-item user-dd-action" onclick="App.navigate(\'admin-users\')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>系统管理</button>' : ''}
           <button type="button" class="user-dd-item user-dd-action" onclick="App.goPortal()">
@@ -298,6 +303,52 @@ window.App = (function() {
   function gotoQuota() {
     if (window.ChatMod && typeof ChatMod.openRechargeModal === 'function') ChatMod.openRechargeModal();
     else navigate('chat');
+  }
+
+  // 顶栏 AI 助手入口 → 进入 AI 购房助手页
+  function goChat() { navigate('chat'); }
+
+  // ===== 移动端「更多」底部抽屉 =====
+  const MORE_ITEMS = [
+    { view: 'expectation', label: '期望档案', icon: 'target' },
+    { view: 'report',      label: '看房报告', icon: 'note' },
+    { view: 'compare',     label: '决策对比', icon: 'scale' },
+    { view: 'news',        label: '房产资讯', icon: 'news' },
+    { view: 'workflow',    label: '购房进度', icon: 'roadmap' },
+    { view: 'finance',     label: '财务计算', icon: 'calc' },
+    { view: 'location',    label: '区位分析', icon: 'compass' },
+  ];
+  function renderMoreSheet() {
+    const grid = document.getElementById('moreGrid');
+    if (!grid) return;
+    const items = MORE_ITEMS.slice();
+    if (AuthMod.isAdmin()) items.push({ view: 'admin-users', label: '系统管理', icon: 'gear' });
+    grid.innerHTML = items.map(it => `
+      <button type="button" class="more-item" data-view="${it.view}" onclick="App.openMoreItem('${it.view}')">
+        <span class="more-item-ico">${ic(it.icon, 24)}</span>
+        <span class="more-item-label">${it.label}</span>
+      </button>`).join('');
+  }
+  function openMore() {
+    const mask = document.getElementById('moreMask');
+    if (!mask) return;
+    renderMoreSheet();
+    mask.style.display = 'block';
+    mask.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => mask.classList.add('show'));
+    document.body.style.overflow = 'hidden';
+  }
+  function closeMore() {
+    const mask = document.getElementById('moreMask');
+    if (!mask) return;
+    mask.classList.remove('show');
+    mask.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    setTimeout(() => { mask.style.display = 'none'; }, 320);
+  }
+  function openMoreItem(view) {
+    closeMore();
+    navigate(view);
   }
 
   // ===== 个人资料：头像 / 昵称 / 修改密码 =====
@@ -423,8 +474,8 @@ window.App = (function() {
 
   // 启动
   async function boot() {
-    // 登录门槛：未登录一律跳转登录门户
-    if (!AuthMod.isLoggedIn()) { location.replace('login.html'); return; }
+    // 登录门槛：未登录跳转登录门户（移动端先进入引导页 onboarding.html，桌面进入登录页）
+    if (!AuthMod.isLoggedIn()) { location.replace(window._MOBILE_APP ? 'onboarding.html' : 'login.html'); return; }
     // 权限控制：系统设置 / 用户管理 导航仅管理员可见（CSS 默认隐藏，防止刷新闪现；管理员移除隐藏类恢复显示）
     document.querySelectorAll('.admin-only').forEach(el => {
       if (AuthMod.isAdmin()) el.classList.remove('admin-only');
@@ -453,8 +504,8 @@ window.App = (function() {
     renderUser();
     // 断点切换时刷新用户菜单（桌面/移动端「系统管理」入口差异）
     window.addEventListener('resize', () => { try { renderUser(); } catch(e){} });
-    // 读取hash路由
-    let initView = 'chat';
+    // 读取hash路由（移动端独立入口默认首页，桌面版默认 AI 购房助手）
+    let initView = window._MOBILE_APP ? 'dashboard' : 'chat';
     if (location.hash) {
       const h = location.hash.slice(1);
       if (VIEW_MAP[h]) initView = h;
@@ -484,5 +535,5 @@ window.App = (function() {
     boot();
   }
 
-  return { get curView() { return curView; }, setContent, navigate, changeCity, renderCitySwitch, renderUser, doLogout, goPortal, openProfile, pickAvatar, removeAvatar, saveProfile, refreshTopbarQuota, gotoQuota };
+  return { get curView() { return curView; }, setContent, navigate, changeCity, renderCitySwitch, renderUser, doLogout, goPortal, openProfile, pickAvatar, removeAvatar, saveProfile, refreshTopbarQuota, gotoQuota, goChat, openMore, closeMore, openMoreItem };
 })();

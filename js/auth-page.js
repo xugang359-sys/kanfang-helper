@@ -245,7 +245,7 @@ window.AuthPage = (function() {
       setBusy(false, mode === 'login' ? '登录' : '注册');
       return;
     }
-    location.replace('index.html');
+    location.replace(mobileDevice() ? 'mobile.html' : 'index.html');
   }
 
   // 协议确认弹窗（Apple 风格 Alert：毛玻璃遮罩 + 居中卡片 + 弹簧入场）
@@ -300,9 +300,19 @@ window.AuthPage = (function() {
     bindPassToggle(btn, input);
   }
 
+  // 移动设备判断：登录后跳转移动版入口（桌面端不受影响）
+  function mobileDevice() {
+    return window._MOBILE_APP || /Android|iPhone|iPad|iPod|Mobile|MicroMessenger/i.test(navigator.userAgent) || window.innerWidth < 768;
+  }
+
   function boot() {
-    // 已登录则直接进入系统
-    if (AuthMod.isLoggedIn()) { location.replace('index.html'); return; }
+    // 支持从引导页直达：login.html?mode=register 自动切换到注册模式
+    try {
+      const m = new URLSearchParams(location.search).get('mode');
+      if (m === 'login' || m === 'register') setMode(m);
+    } catch (e) {}
+    // 已登录则直接进入系统（移动端进入 mobile.html）
+    if (AuthMod.isLoggedIn()) { location.replace(mobileDevice() ? 'mobile.html' : 'index.html'); return; }
     renderCities();
     CityPicker.init();
     TermsConfirm.init();

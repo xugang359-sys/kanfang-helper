@@ -1,0 +1,21 @@
+<svg width="240" height="64" viewBox="0 0 240 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0071E3"/>
+      <stop offset="1" stop-color="#2997FF"/>
+    </linearGradient>
+  </defs>
+  <!-- 品牌图标：蓝渐变圆角方块 + 白色房子 -->
+  <g transform="translate(0,15)">
+    <rect width="34" height="34" rx="10" fill="url(#brandGrad)"/>
+    <svg x="5" y="5" width="24" height="24" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="#FFFFFF" stroke-width="2.8" d="M3 10.5 L16 2 L29 10.5"/>
+      <path stroke="#FFFFFF" stroke-width="3.2" d="M8 12 L8 28"/>
+      <path stroke="#FFFFFF" stroke-width="3.2" d="M8 12 L20 28"/>
+      <path stroke="#FFFFFF" stroke-width="3.2" d="M20 12 L20 28"/>
+    </svg>
+  </g>
+  <!-- 品牌文字 -->
+  <text x="48" y="42" font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="22" font-weight="700" fill="#1D1D1F">优宅邦</text>
+  <text x="142" y="40" font-family="'Work Sans','Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#0071E3">NestWise</text>
+</svg>

@@ -138,12 +138,32 @@ img { max-width: 100%; display: block; }
   transition: color 0.2s, background 0.2s;
 }
 .p-nav-links a:hover { color: var(--p-blue); background: rgba(0,113,227,0.07); }
-.p-nav-actions { display: flex; align-items: center; }
+.p-nav-actions { display: flex; align-items: center; gap: 10px; }
 .p-nav-actions .p-nav-user {
   font-size: 13.5px; color: var(--p-text-2); margin-right: 14px;
   max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .p-nav .p-btn { padding: 8px 20px; font-size: 14px; }
+/* 顶部扫码登录按钮：毛玻璃胶囊，与主按钮视觉一致层级更低 */
+.p-nav-scan {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 14px;
+  border: 1px solid var(--p-border);
+  border-radius: var(--p-r-full);
+  background: rgba(255,255,255,0.6);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+  color: var(--p-text-1); font-family: inherit; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.2s var(--p-ease), border-color 0.2s, color 0.2s, transform 0.16s var(--p-ease);
+}
+.p-nav-scan svg { color: var(--p-blue); }
+.p-nav-scan:hover { background: #fff; border-color: rgba(0,113,227,0.35); color: var(--p-blue); }
+.p-nav-scan:active { transform: scale(0.96); }
+/* 手机端访问门户时无需扫码，隐藏顶部扫码入口 */
+@media (max-width: 640px) {
+  .p-nav-scan { display: none; }
+}
 
 /* ================= HERO ================= */
 .p-hero {
@@ -286,6 +306,57 @@ img { max-width: 100%; display: block; }
 .p-to-top.show { opacity: 1; transform: none; pointer-events: auto; }
 .p-to-top:hover { background: #fff; color: var(--p-blue); box-shadow: 0 14px 34px -10px rgba(0,0,0,0.32); }
 .p-to-top:active { transform: scale(0.92); }
+
+/* ---- 扫码登录弹窗（Apple 风格 Modal） ---- */
+.p-scan-mask {
+  position: fixed; inset: 0; z-index: 990;
+  background: rgba(0,0,0,0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: pScanFade 0.25s var(--p-ease);
+}
+/* hidden 属性优先于 display:flex（关闭/初始隐藏） */
+.p-scan-mask[hidden] { display: none; }
+@keyframes pScanFade { from { opacity: 0; } to { opacity: 1; } }
+.p-scan-modal {
+  position: relative;
+  width: 340px; max-width: 100%;
+  background: #fff; border-radius: 22px;
+  padding: 30px 28px 24px;
+  text-align: center;
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.4);
+  animation: pScanUp 0.4s cubic-bezier(0.22,1,0.36,1);
+}
+@keyframes pScanUp { from { opacity: 0; transform: translateY(18px) scale(0.97); } to { opacity: 1; transform: none; } }
+.p-scan-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: none; background: rgba(0,0,0,0.05);
+  color: var(--p-text-2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, transform 0.15s var(--p-ease);
+}
+.p-scan-close:hover { background: rgba(0,0,0,0.1); }
+.p-scan-close:active { transform: scale(0.92); }
+.p-scan-title { font-size: 19px; font-weight: 700; color: var(--p-text-1); letter-spacing: -0.01em; }
+.p-scan-sub { font-size: 13px; color: var(--p-text-2); margin: 8px 0 18px; line-height: 1.6; }
+.p-scan-qr {
+  width: 200px; height: 200px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--p-border); border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+}
+.p-scan-loading { font-size: 13px; color: var(--p-text-3); }
+.p-scan-err { font-size: 13px; color: #D70015; }
+.p-scan-ok { width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; color: #34C759; }
+.p-scan-status { font-size: 13.5px; font-weight: 600; color: var(--p-text-1); margin-top: 14px; min-height: 20px; }
+.p-scan-tip { font-size: 11.5px; color: var(--p-text-3); margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .p-scan-mask, .p-scan-modal { animation: none; }
+}
 
 /* ================= 核心功能矩阵 ================= */
 .p-feature-grid { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }

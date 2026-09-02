@@ -960,15 +960,15 @@ window.LocationMod = (function() {
           </div>
         </div>
         ${mapPlaceholder}
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px;">
-          ${data.map(f=>`<div style="padding:8px 10px;background:#fff;border:1px solid var(--border-light);border-radius:6px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <strong style="font-size:12.5px;">${f.category}</strong>
+        <div class="f-cats">
+          ${data.map(f=>`<div class="f-cat">
+            <div class="f-cat-head">
+              <span class="f-cat-name">${f.category}</span>
               <span class="tag tag-sm tag-success">${f.count}处</span>
             </div>
-            ${f.sub ? `<div style="font-size:11px;color:var(--primary);margin-top:3px;">${f.sub}</div>` : ''}
-            <div style="font-size:11.5px;color:var(--text-2);margin-top:4px;line-height:1.7;">${f.names.join(' · ')}</div>
-            <div style="font-size:11px;color:var(--primary);margin-top:2px;">覆盖范围 ${f.distance}</div>
+            ${f.sub ? `<div class="f-cat-sub">${f.sub}</div>` : ''}
+            <div class="f-cat-list">${f.names.join(' · ')}</div>
+            <div class="f-cat-range">${ic('pin',12)} 覆盖范围 ${f.distance}</div>
           </div>`).join('')}
         </div>
       </div>

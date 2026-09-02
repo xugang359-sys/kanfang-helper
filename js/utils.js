@@ -464,7 +464,10 @@ window.Utils = (function() {
       amapSrv: g('k_amap_srv'),
       news:    g('k_news_api'),
       llm:     g('k_llm_api'),
-      llmModel:g('k_llm_model')
+      llmModel:g('k_llm_model'),
+      xfAppId:  g('k_xf_appid'),
+      xfApiKey: g('k_xf_apikey'),
+      xfApiSecret: g('k_xf_apisecret')
     };
   }
   function apiConfigured(name) {
@@ -473,6 +476,7 @@ window.Utils = (function() {
     if (name === 'amapJs') return !!k.amapJs;
     if (name === 'news')   return !!k.news;
     if (name === 'llm')    return !!k.llm;
+    if (name === 'voice')  return !!(k.xfAppId && k.xfApiKey && k.xfApiSecret);
     return false;
   }
   function apiStatus() {
@@ -481,6 +485,7 @@ window.Utils = (function() {
       { id:'amap', label:'高德地图', icon:'map', configured: !!k.amapSrv },
       { id:'news', label:'新闻资讯', icon:'news', configured: !!k.news },
       { id:'llm',  label:'AI 大模型', icon:'cpu', configured: !!k.llm },
+      { id:'voice', label:'语音识别', icon:'mic', configured: !!(k.xfAppId && k.xfApiKey && k.xfApiSecret) },
     ];
   }
   // 渲染"需要配置 API"的空状态门槛卡片
@@ -704,6 +709,7 @@ window.Utils = (function() {
     award:      '<circle cx="12" cy="8" r="6"/><path d="M15.5 13 17 22l-5-3-5 3 1.5-9"/>',
     building:   '<rect x="4" y="2" width="16" height="20" rx="1"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
     phone:      '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+    mic:        '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>',
     bag:        '<path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M9 11v2a3 3 0 0 0 6 0v-2"/>',
     book:       '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15Z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
     filter:     '<path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3Z"/>',

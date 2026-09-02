@@ -7,7 +7,7 @@
 <title>优宅邦 NestWise · 智慧选房，决策无忧</title>
 <meta name="description" content="优宅邦 NestWise · 个人房产智慧决策门户。AI 购房助手、六维匹配度、多房源对比、财务测算、区位分析，购房全流程一站式管理。">
 <link rel="icon" type="image/svg+xml" href="assets/logos/favicon.svg">
-<link rel="stylesheet" href="css/portal.css?v=20260923">
+<link rel="stylesheet" href="css/portal.css?v=20261012">
 </head>
 <body>
 
@@ -32,6 +32,10 @@
       <a href="#cities">城市政策</a>
     </nav>
     <div class="p-nav-actions">
+      <button type="button" class="p-nav-scan" onclick="window.__pScanOpen && window.__pScanOpen()" title="扫码在手机上访问系统" aria-label="扫码在手机上访问系统">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>
+        <span>手机访问</span>
+      </button>
       <a class="p-btn p-btn-primary" href="login.html">开始使用</a>
     </div>
   </div>
@@ -156,6 +160,21 @@
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
 </button>
 
-<script src="js/portal.js?v=20260923"></script>
+<!-- 扫码用手机访问系统弹窗（Apple 风格 Modal） -->
+<div class="p-scan-mask" id="pScanMask" hidden>
+  <div class="p-scan-modal" role="dialog" aria-modal="true" aria-label="用手机访问系统">
+    <button type="button" class="p-scan-close" onclick="window.__pScanClose()" aria-label="关闭">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h3 class="p-scan-title">用手机访问系统</h3>
+    <p class="p-scan-sub">打开手机相机或微信扫一扫，即可在手机上使用优宅邦移动版</p>
+    <div class="p-scan-qr" id="pScanQr"></div>
+    <p class="p-scan-status" id="pScanStatus">正在生成二维码…</p>
+    <p class="p-scan-tip">二维码 10 分钟内有效 · 手机扫码后自动打开移动版，数据随账号同步</p>
+  </div>
+</div>
+
+<script src="js/vendor/qrcode.min.js"></script>
+<script src="js/portal.js?v=20261016"></script>
 </body>
 </html>

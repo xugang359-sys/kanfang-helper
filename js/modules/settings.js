@@ -110,6 +110,29 @@ window.SettingsMod = (function() {
             <div class="api-actions"><span class="api-test-msg" id="llmTestStatus"></span></div>
           </div>
 
+          <div class="api-block">
+            <div class="api-block-head">
+              <div class="api-block-title"><span class="ico">${ic('mic')}</span>语音识别（讯飞）</div>
+              <span class="${tagCls(Utils.apiConfigured('voice'))}" id="voiceKeyTag">${Utils.apiConfigured('voice')?'已配置':'未配置'}</span>
+            </div>
+            <p class="api-desc">用于「AI购房助手」的语音输入（国内直连，无需翻墙）。免费额度：讯飞开放平台语音听写每日 500 次（需实名认证）。申请：<a href="https://www.xfyun.cn/services/online_asr" target="_blank" style="color:var(--primary);">xfyun.cn →</a> 创建应用后开通「语音听写（流式版）」，获取 AppID / APIKey / APISecret。配置后，系统部署到云端 <strong>https 域名</strong>（或本机 localhost）时，Web 端与手机浏览器均可使用语音输入。</p>
+            <div class="form-grid">
+              <div class="form-item full"><label>AppID</label>
+                <input type="text" id="k_xf_appid" placeholder="讯飞应用 AppID，如 5f2c1a9b" value="${keys.xfAppId}">
+              </div>
+              <div class="form-item full"><label>APIKey</label>
+                <div class="key-row">
+                  <input type="text" id="k_xf_apikey" placeholder="讯飞 APIKey" value="${keys.xfApiKey}">
+                  <button class="btn btn-accent btn-sm" onclick="SettingsMod.testVoiceKey()">测试连接</button>
+                </div>
+              </div>
+              <div class="form-item full"><label>APISecret</label>
+                <input type="text" id="k_xf_apisecret" placeholder="讯飞 APISecret" value="${keys.xfApiSecret}">
+              </div>
+            </div>
+            <div class="api-actions"><span class="api-test-msg" id="voiceTestStatus"></span></div>
+          </div>
+
           <div style="display:flex;justify-content:flex-end;margin-top:6px;">
             <button class="btn btn-primary btn-sm" onclick="SettingsMod.saveKeys()">${ic('save',15)} 保存全部 API Key</button>
           </div>
@@ -158,13 +181,34 @@ window.SettingsMod = (function() {
       const sp = chip.querySelector('span');
       if (sp) sp.textContent = a.configured ? '已配置' : '未配置';
     });
-    [['amapKeyTag','amap'],['newsKeyTag','news'],['llmKeyTag','llm']].forEach(([id, name]) => {
+    [['amapKeyTag','amap'],['newsKeyTag','news'],['llmKeyTag','llm'],['voiceKeyTag','voice']].forEach(([id, name]) => {
       const el = document.getElementById(id);
       if (!el) return;
       const ok = Utils.apiConfigured(name);
       el.textContent = ok ? '已配置' : '未配置';
       el.className = 'tag tag-sm ' + (ok ? 'tag-success' : 'tag-danger');
     });
+  }
+
+  // 语音识别（讯飞）配置校验：三要素齐全 + 可生成签名连接
+  async function testVoiceKey() {
+    ['k_xf_appid','k_xf_apikey','k_xf_apisecret'].forEach(k => {
+      const v = document.getElementById(k)?.value?.trim() || '';
+      if (v) localStorage.setItem(k, v); else localStorage.removeItem(k);
+    });
+    const status = document.getElementById('voiceTestStatus');
+    if (status) { status.textContent = '正在校验配置...'; status.className = 'api-test-msg'; }
+    try {
+      if (!window.VoiceMod) throw new Error('语音模块未加载，请刷新页面');
+      const msg = await VoiceMod.test();
+      if (status) { status.textContent = msg; status.className = 'api-test-msg ok'; }
+      refreshApiStatus();
+      Utils.toast('讯飞语音配置有效','success');
+    } catch(e) {
+      const msg = e.message || '配置无效';
+      if (status) { status.textContent = msg; status.className = 'api-test-msg err'; }
+      Utils.toast('讯飞语音配置校验失败：' + msg, 'warn');
+    }
   }
 
   // ===== 通知偏好 · 与开关/按钮双向联动 =====
@@ -198,7 +242,7 @@ window.SettingsMod = (function() {
   }
 
   function saveKeys() {
-    const keys = ['k_amap_js','k_amap_srv','k_news_api','k_llm_api','k_llm_model'];
+    const keys = ['k_amap_js','k_amap_srv','k_news_api','k_llm_api','k_llm_model','k_xf_appid','k_xf_apikey','k_xf_apisecret'];
     keys.forEach(k => {
       const v = document.getElementById(k)?.value?.trim() || '';
       if (v) localStorage.setItem(k, v); else localStorage.removeItem(k);
@@ -353,5 +397,5 @@ window.SettingsMod = (function() {
     setTimeout(()=>location.reload(), 800);
   }
 
-  return { configHTML, dataHTML, saveNotify, saveKeys, refreshApiStatus, syncNotifyUI, toggleNotifyPref, checkRemindersUI, testAmapJS, testAmapSrv, testNewsKey, testLLM, exportCSVPlan, resetAll, doReset };
+  return { configHTML, dataHTML, saveNotify, saveKeys, refreshApiStatus, syncNotifyUI, toggleNotifyPref, checkRemindersUI, testAmapJS, testAmapSrv, testNewsKey, testLLM, testVoiceKey, exportCSVPlan, resetAll, doReset };
 })();

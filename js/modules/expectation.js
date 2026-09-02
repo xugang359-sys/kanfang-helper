@@ -25,7 +25,7 @@ window.ExpectationMod = (function() {
         <div class="form-grid">
           <div class="form-item">
             <label>总价预算范围（万元）</label>
-            <div style="display:flex;gap:8px;align-items:center;">
+            <div class="range-pair">
               <input type="number" data-field="budgetMin" min="0" placeholder="最低">
               <span>—</span>
               <input type="number" data-field="budgetMax" min="0" placeholder="最高">
@@ -206,11 +206,11 @@ window.ExpectationMod = (function() {
     const list = (areas && areas.length) ? areas : [{ city: Store.getDefaultCity(), districts: [] }];
     return list.map(a => `
       <div class="area-group" style="border:1px solid var(--border-light);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--bg-2);">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-          <div class="cascade-group" style="display:flex;gap:6px;">${Store.cityCascadeHTML(a.city, 'area', { onCity: 'ExpectationMod.onCityChange(this)' })}</div>
-          <span style="font-size:12px;color:var(--text-3);">区域（可多选）</span>
-          <a class="area-toggle-all" style="margin-left:auto;color:var(--primary);cursor:pointer;font-size:12px;" onclick="ExpectationMod.toggleAllAreas(this)">${ic('check',12)} 全选区域</a>
-          <a style="color:var(--danger);cursor:pointer;font-size:12px;margin-left:10px;" onclick="ExpectationMod.removeCityArea(this)">${ic('x',12)} 移除该城市</a>
+        <div class="area-head">
+          <div class="cascade-group">${Store.cityCascadeHTML(a.city, 'area', { onCity: 'ExpectationMod.onCityChange(this)' })}</div>
+          <span class="area-tip">区域（可多选）</span>
+          <a class="area-toggle-all" onclick="ExpectationMod.toggleAllAreas(this)">${ic('check',12)} 全选区域</a>
+          <a class="area-del" onclick="ExpectationMod.removeCityArea(this)">${ic('x',12)} 移除该城市</a>
         </div>
         <div class="area-districts" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;">
           ${(Store.CITIES[a.city]||[]).map(d=>`

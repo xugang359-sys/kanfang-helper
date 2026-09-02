@@ -322,15 +322,20 @@
     onScroll();
   }
 
-  // 导航右上角：已登录显示昵称 + 进入工作台（系统页），未登录显示开始使用（登录页）
+  // 导航右上角：扫码用手机访问 + 已登录显示昵称/进入工作台，未登录显示开始使用
   function renderNavAction() {
     const box = $('.p-nav-actions');
     if (!box) return;
     let u = null;
     try { u = JSON.parse(localStorage.getItem('house_hunter_session') || 'null'); } catch (e) {}
-    box.innerHTML = u && u.email
-      ? `<span class="p-nav-user">${esc(u.name || u.email)}</span><a class="p-btn p-btn-primary" href="index.html">进入工作台</a>`
-      : `<a class="p-btn p-btn-primary" href="login.html">开始使用</a>`;
+    // 移动设备直达移动版工作台，桌面进入 WEB 工作台
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile|MicroMessenger/i.test(navigator.userAgent) || window.innerWidth < 768;
+    const workHref = isMobile ? 'mobile.html' : 'index.html';
+    const scanBtn = '<button type="button" class="p-nav-scan" onclick="window.__pScanOpen && window.__pScanOpen()" title="扫码在手机上访问系统" aria-label="扫码在手机上访问系统">' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg><span>手机访问</span></button>';
+    box.innerHTML = scanBtn + (u && u.email
+      ? `<span class="p-nav-user">${esc(u.name || u.email)}</span><a class="p-btn p-btn-primary" href="${workHref}">进入工作台</a>`
+      : `<a class="p-btn p-btn-primary" href="login.html">开始使用</a>`);
   }
 
   // 首屏分层入场：逐层上浮去模糊，与导航同步启动
@@ -510,6 +515,99 @@
     });
   }
 
+  /* ============================================
+     9. 扫码用手机访问系统（桌面签发 → 手机扫码进入移动版并同步账号 → 桌面轮询）
+     ============================================ */
+  let __scanTimer = null;
+  function drawQr(text) {
+    const qrEl = $('#pScanQr');
+    if (!qrEl) return;
+    qrEl.innerHTML = '';
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(text);
+      qr.make();
+      const img = qr.createImgTag(5, 8);
+      qrEl.innerHTML = img;
+      const im = qrEl.querySelector('img');
+      if (im) { im.style.width = '180px'; im.style.height = '180px'; im.alt = '用手机访问系统二维码'; }
+    } catch (e) { qrEl.innerHTML = '<p class="p-scan-err">二维码生成失败</p>'; }
+  }
+  function pollScan(ticket) {
+    if (__scanTimer) clearInterval(__scanTimer);
+    __scanTimer = setInterval(() => {
+      fetch('/api/scan/status?ticket=' + encodeURIComponent(ticket))
+        .then(r => r.json())
+        .then(d => {
+          if (d.ok && d.status === 'claimed') {
+            clearInterval(__scanTimer);
+            __scanTimer = null;
+            const qrEl = $('#pScanQr');
+            const stEl = $('#pScanStatus');
+            if (qrEl) qrEl.innerHTML = '<div class="p-scan-ok"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>';
+            if (stEl) stEl.textContent = '扫码成功，手机已打开移动版';
+          }
+        }).catch(() => {});
+    }, 2000);
+  }
+  function openScanLogin() {
+    const mask = $('#pScanMask');
+    if (!mask) return;
+    mask.hidden = false;
+    const qrEl = $('#pScanQr');
+    const stEl = $('#pScanStatus');
+    if (qrEl) qrEl.innerHTML = '<div class="p-scan-loading">正在生成…</div>';
+    if (stEl) stEl.textContent = '正在生成二维码…';
+    let u = null;
+    try { u = JSON.parse(localStorage.getItem('house_hunter_session') || 'null'); } catch (e) {}
+    const token = localStorage.getItem('house_hunter_token') || '';
+    // 电脑端未登录：二维码指向移动端引导页，手机扫码后自行登录/注册，在手机上使用系统
+    if (!u || !u.email || !token) {
+      resolveScanBase().then(base => {
+        drawQr(base + '/onboarding.html');
+        if (stEl) stEl.textContent = '扫一扫，在手机上开始使用';
+      });
+      return;
+    }
+    // 电脑端已登录：签发一次性票据，手机扫码自动同步同一账号，直接打开移动版
+    resolveScanBase().then(base => {
+      fetch('/api/scan/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: '{}',
+      }).then(r => r.json()).then(d => {
+        if (!d.ok) { if (stEl) stEl.textContent = d.err || '生成二维码失败'; return; }
+        drawQr(base + '/onboarding.html?scan=' + encodeURIComponent(d.ticket));
+        if (stEl) stEl.textContent = '扫码后手机将打开移动版并同步账号「' + (u.name || u.email) + '」';
+        pollScan(d.ticket);
+      }).catch(() => { if (stEl) stEl.textContent = '无法连接服务器，请确认已启动 node server.js'; });
+    });
+  }
+  function closeScanLogin() {
+    if (__scanTimer) { clearInterval(__scanTimer); __scanTimer = null; }
+    const mask = $('#pScanMask');
+    if (mask) mask.hidden = true;
+  }
+  // 二维码目标地址：localhost 对手机不可达，需换成电脑的局域网 IP
+  async function resolveScanBase() {
+    try {
+      const h = location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '') {
+        const r = await fetch('/api/net/ip', { cache: 'no-store' });
+        const d = await r.json();
+        if (d && d.ok && d.host) return location.protocol + '//' + d.host + (location.port ? ':' + location.port : '');
+      }
+    } catch (e) {}
+    return location.origin;
+  }
+  function initScanLogin() {
+    window.__pScanOpen = openScanLogin;
+    window.__pScanClose = closeScanLogin;
+    const mask = $('#pScanMask');
+    if (mask) mask.addEventListener('click', e => { if (e.target === mask) closeScanLogin(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeScanLogin(); });
+  }
+
   /* ---------- 启动 ---------- */
   function boot() {
     renderFeatures();
@@ -523,6 +621,7 @@
     initReveal();
     initAiFloat();
     initToTop();
+    initScanLogin();
     parallaxHero();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

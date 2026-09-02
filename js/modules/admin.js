@@ -534,7 +534,11 @@ window.AdminMod = (function() {
   async function renderLogs(pane) {
     pane.innerHTML = `
       <div class="cards-grid" id="adminStats"><div class="card"><p style="color:var(--text-3);">正在加载统计数据...</p></div></div>
-      <div id="rangeBox" style="margin-top:14px;">${rangeHTML()}</div>
+      <div id="rangeBox" style="margin-top:14px;">${rangeHTML()}
+        <button type="button" class="m-filter-btn" onclick="AdminMod.openRangeSheet()">
+          ${subIcon('M3 6h18M3 12h18M3 18h12', 15)} 时间范围
+        </button>
+      </div>
       <div id="adminBody" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;"></div>`;
     const r = await api('admin/stats?range=' + encodeURIComponent(range), null, 'GET');
     const statsBox = pane.querySelector('#adminStats');
@@ -559,6 +563,52 @@ window.AdminMod = (function() {
 
   function setRange(v) {
     range = v;
+    renderSub('logs');
+  }
+
+  // 移动端：时间范围筛选抽屉（复用 more-sheet 底部抽屉样式）
+  function ensureRangeSheet() {
+    if (document.getElementById('rangeSheetMask')) return;
+    document.body.insertAdjacentHTML('beforeend', `
+      <div class="more-mask" id="rangeSheetMask" style="display:none" aria-hidden="true">
+        <div class="more-sheet" id="rangeSheet" role="dialog" aria-label="选择时间范围">
+          <div class="more-sheet-handle"></div>
+          <div class="more-sheet-head">
+            <h3>时间范围</h3>
+            <button type="button" class="more-sheet-close" onclick="AdminMod.closeRangeSheet()">✕</button>
+          </div>
+          <div class="filter-sheet-body" id="rangeSheetBody"></div>
+        </div>
+      </div>`);
+    document.getElementById('rangeSheetMask').addEventListener('click', e => {
+      if (e.target.id === 'rangeSheetMask') closeRangeSheet();
+    });
+  }
+  function openRangeSheet() {
+    ensureRangeSheet();
+    const body = document.getElementById('rangeSheetBody');
+    const items = [['all', '全部'], ['day', '近 1 天'], ['week', '近 7 天'], ['month', '近 30 天']];
+    body.innerHTML = `
+      <div class="f-chips f-chips-col">
+        ${items.map(([v, t]) => `<button type="button" class="f-chip ${range === v ? 'on' : ''}" onclick="AdminMod.applyRangeM('${v}')">${t}</button>`).join('')}
+      </div>`;
+    const mask = document.getElementById('rangeSheetMask');
+    mask.style.display = 'block';
+    mask.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => mask.classList.add('show'));
+    document.body.style.overflow = 'hidden';
+  }
+  function closeRangeSheet() {
+    const mask = document.getElementById('rangeSheetMask');
+    if (!mask) return;
+    mask.classList.remove('show');
+    mask.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    setTimeout(() => { mask.style.display = 'none'; }, 320);
+  }
+  function applyRangeM(v) {
+    range = v;
+    closeRangeSheet();
     renderSub('logs');
   }
 
@@ -801,5 +851,6 @@ window.AdminMod = (function() {
 
   return { render, setRange, mapBack, openUserModal, saveUser, toggleUser, deleteUser, doDeleteUser,
            toggleSelectAll, batchDelete, doBatchDelete,
-           refreshQuota, adjQuota, genCodes, handleRequest };
+           refreshQuota, adjQuota, genCodes, handleRequest,
+           openRangeSheet, closeRangeSheet, applyRangeM };
 })();

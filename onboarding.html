@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#F5F6FA">
+<meta name="format-detection" content="telephone=no">
+<link rel="icon" type="image/svg+xml" href="assets/logos/favicon.svg">
+<title>优宅邦 NestWise · 让 AI 助你选好房</title>
+<meta name="description" content="优宅邦 NestWise · 移动端购房决策助手，AI 智能荐房、看房日程、决策对比一站式护航">
+<link rel="stylesheet" href="css/onboarding.css?v=20261010">
+</head>
+<body>
+
+<!-- 背景装饰：柔和渐变 + 光斑（模拟 iOS 毛玻璃底部的弥散光） -->
+<div class="ob-bg" aria-hidden="true">
+  <div class="ob-glow ob-glow-a"></div>
+  <div class="ob-glow ob-glow-b"></div>
+  <div class="ob-glow ob-glow-c"></div>
+</div>
+
+<main class="ob-page">
+  <!-- 扫码进入移动版状态横幅（从桌面端二维码进入时显示） -->
+  <div class="ob-scan-banner" id="scanBanner" style="display:none;">
+    <span class="ob-scan-dot"></span>
+    <span class="ob-scan-txt" id="scanBannerTxt">正在为你打开移动版…</span>
+  </div>
+
+  <!-- 品牌区 -->
+  <header class="ob-brand">
+    <div class="ob-logo" aria-label="优宅邦 Logo">
+      <img src="assets/logos/favicon.svg" alt="优宅邦" width="64" height="64">
+    </div>
+    <div class="ob-brand-name">优宅邦<em>NestWise</em></div>
+  </header>
+
+  <!-- 介绍语录 -->
+  <section class="ob-intro">
+    <h1 class="ob-title">让 AI 助你，<br>做出更有底气的购房决策</h1>
+    <p class="ob-sub">7×24 小时 AI 购房管家「贾维斯」<br>懂政策 · 懂行情 · 更懂你</p>
+
+    <ul class="ob-points">
+      <li class="ob-point">
+        <span class="ob-p-ico" style="--pc:#0071E3;--pb:rgba(0,113,227,.12)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M8 9h8M8 13h5"/></svg>
+        </span>
+        <span class="ob-p-txt"><b>AI 购房助手</b><i>专属管家，随时解答你的决策疑问</i></span>
+      </li>
+      <li class="ob-point">
+        <span class="ob-p-ico" style="--pc:#34C759;--pb:rgba(52,199,89,.12)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 20 5.5 17 14 12 22 7 14 4 5.5Z"/><path d="m4 5.5 8 3 8-3"/></svg>
+        </span>
+        <span class="ob-p-txt"><b>六维匹配评估</b><i>预算 · 户型 · 通勤 · 配套 · 印象 · 潜力</i></span>
+      </li>
+      <li class="ob-point">
+        <span class="ob-p-ico" style="--pc:#FF9F0A;--pb:rgba(255,159,10,.14)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7v14h6V7L6 3Z"/><path d="M16 3l4 4v14h-6V7l2-4Z"/></svg>
+        </span>
+        <span class="ob-p-txt"><b>看房全周期管理</b><i>记录 · 三套对比 · 进度追踪</i></span>
+      </li>
+    </ul>
+  </section>
+
+  <!-- 底部操作区：登录 / 注册 -->
+  <footer class="ob-actions">
+    <button type="button" class="ob-btn ob-btn-primary" onclick="goAuth('login.html')">登录</button>
+    <button type="button" class="ob-btn ob-btn-ghost" onclick="goAuth('login.html?mode=register')">注册新账号</button>
+    <p class="ob-foot">登录即代表同意 <a href="terms.html" target="_blank" rel="noopener">《服务条款》</a> 与 <a href="privacy.html" target="_blank" rel="noopener">《隐私政策》</a></p>
+  </footer>
+</main>
+
+<script src="js/store.js?v=20260901"></script>
+<script src="js/modules/auth.js?v=20260828e"></script>
+<script>
+  // 已登录用户经过引导页时直接进入系统，不再展示登录页
+  function goAuth(url) {
+    try { if (window.AuthMod && AuthMod.isLoggedIn()) { location.href = 'mobile.html'; return; } } catch (e) {}
+    location.href = url;
+  }
+
+  // 扫码进移动版：从桌面端二维码（onboarding.html?scan=TICKET）进入，自动同步电脑账号会话
+  (function () {
+    const ticket = new URLSearchParams(location.search).get('scan');
+    if (!ticket) return;
+    const banner = document.getElementById('scanBanner');
+    if (banner) banner.style.display = 'flex';
+    fetch('/api/scan/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket: ticket }),
+    }).then(r => r.json()).then(d => {
+      if (d.ok) {
+        localStorage.setItem('house_hunter_token', d.token);
+        localStorage.setItem('house_hunter_session', JSON.stringify({
+          email: d.user.email, name: d.user.name, isAdmin: !!d.user.isAdmin, avatar: d.user.avatar || '', loginAt: Date.now()
+        }));
+        const txt = document.getElementById('scanBannerTxt');
+        if (txt) txt.textContent = '账号已同步，正在进入移动版…';
+        setTimeout(() => location.replace('mobile.html'), 600);
+      } else {
+        const txt = document.getElementById('scanBannerTxt');
+        if (txt) txt.textContent = d.err || '进入移动版失败，请返回电脑重新生成二维码';
+        setTimeout(() => { if (banner) banner.style.display = 'none'; }, 4000);
+      }
+    }).catch(() => {
+      const txt = document.getElementById('scanBannerTxt');
+      if (txt) txt.textContent = '无法连接服务器，请稍后重试';
+      setTimeout(() => { if (banner) banner.style.display = 'none'; }, 4000);
+    });
+  })();
+
+  try {
+    if (window.AuthMod && AuthMod.isLoggedIn()) location.replace('mobile.html');
+  } catch (e) {}
+</script>
+
+</body>
+</html>

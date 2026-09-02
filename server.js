@@ -25,6 +25,7 @@ const CONFIG_FILE = path.join(DB_DIR, 'config.json');    // 全局 API 配置（
 const QUOTAS_FILE = path.join(DB_DIR, 'quotas.json');    // 用户 AI 对话额度
 const CODES_FILE  = path.join(DB_DIR, 'codes.json');     // 充值卡密（兑换码）
 const REQS_FILE   = path.join(DB_DIR, 'recharge_requests.json'); // 人工充值申请
+const SCANS_FILE  = path.join(DB_DIR, 'scans.json');             // 扫码登录票据（桌面签发，手机领取）
 
 /* ---------- 文件存储工具 ---------- */
 function readJSON(file, fallback) {
@@ -51,6 +52,8 @@ const codes  = () => readJSON(CODES_FILE, {});
 const saveCodes = c => writeJSON(CODES_FILE, c);
 const reqs   = () => readJSON(REQS_FILE, []);
 const saveReqs = r => writeJSON(REQS_FILE, r);
+const scans  = () => readJSON(SCANS_FILE, {});
+const saveScans = s => writeJSON(SCANS_FILE, s);
 const isAdminEmail = em => !!(users()[em] || {}).isAdmin;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -221,6 +224,54 @@ function apiRoute(req, res, url, body) {
       saveTokens(tk);
     }
     return j(200, { ok: true });
+  }
+
+  // 扫码用手机访问（电脑端登录后签发票据 → 手机扫码进入移动版同步账号 → 电脑端轮询状态）
+  // 票据 10 分钟有效，创建时顺带清理过期票据
+  const SCAN_TTL = 10 * 60 * 1000;
+  if (url === '/api/scan/create' && req.method === 'POST') {
+    const em = authEmail();
+    if (!em) return j(401, { ok: false, err: '登录状态已失效，请先在电脑端登录后重新生成' });
+    const sc = scans();
+    const now = Date.now();
+    for (const k in sc) if (now - sc[k].createdAt > SCAN_TTL) delete sc[k];
+    const ticket = newToken();
+    sc[ticket] = { email: em, status: 'pending', createdAt: now };
+    saveScans(sc);
+    return j(200, { ok: true, ticket });
+  }
+
+  if (url === '/api/scan/status' && req.method === 'GET') {
+    const ticket = new URLSearchParams(String(req.url.split('?')[1] || '')).get('ticket') || '';
+    const rec = scans()[ticket];
+    if (!rec) return j(404, { ok: false, err: '二维码已过期，请重新获取' });
+    return j(200, { ok: true, status: rec.status, email: rec.email });
+  }
+
+  if (url === '/api/scan/claim' && req.method === 'POST') {
+    const { ticket } = body || {};
+    const sc = scans();
+    const rec = sc[ticket];
+    if (!rec) return j(404, { ok: false, err: '二维码已失效，请重新获取' });
+    if (rec.status === 'claimed') return j(409, { ok: false, err: '该二维码已被使用' });
+    const u = users()[rec.email];
+    if (!u) return j(404, { ok: false, err: '账号不存在' });
+    rec.status = 'claimed';
+    rec.claimedAt = Date.now();
+    saveScans(sc);
+    const token = newToken();
+    const tk = tokens(); tk[token] = rec.email; saveTokens(tk);
+    return j(200, { ok: true, token, user: { name: u.name, email: u.email, isAdmin: !!u.isAdmin, avatar: u.avatar || '' } });
+  }
+
+  // 局域网可达地址：桌面通过 localhost 访问时，二维码需要指向局域网 IP，
+  // 否则手机扫码后会打开手机自身的 localhost 而无法访问引导页
+  if (url === '/api/net/ip' && req.method === 'GET') {
+    const nets = os.networkInterfaces();
+    let host = '';
+    for (const k in nets) for (const n of nets[k]) if (n.family === 'IPv4' && !n.internal) { host = n.address; break; }
+    if (!host) return j(404, { ok: false, err: '未检测到局域网地址，请改用局域网 IP 访问门户' });
+    return j(200, { ok: true, host });
   }
 
   // 拉取数据快照

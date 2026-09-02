@@ -14,6 +14,17 @@ window.ChatMod = (function() {
   let historyOpen = false; // 历史记录面板是否展开
   let sending = false;
 
+  // 语音输入：讯飞（已配置时优先，国内直连稳定）> 浏览器原生 Web Speech API（兜底）
+  let recognition = null;
+  let isRecording = false;
+  let voiceStopping = false; // 用户是否请求过停止（原生引擎启动过程中也立即终止）
+  const voiceSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  // 当前语音引擎：xf=讯飞 / native=浏览器原生 / none=不可用
+  function voiceEngine() {
+    if (window.VoiceMod && VoiceMod.available()) return 'xf';
+    return voiceSupported ? 'native' : 'none';
+  }
+
   // 系统提示词 — 让AI扮演购房顾问角色
   const ASSISTANT_NAME = '贾维斯';
   const SYSTEM_PROMPT = `你是"${ASSISTANT_NAME}"，用户的专属 AI 购房管家。你的职责：
@@ -110,6 +121,11 @@ window.ChatMod = (function() {
   }
 
   // ===== 渲染 =====
+  // 移动端 UI 判定：独立移动入口或窄屏（输入框按移动端规格渲染）
+  function mobileUI() {
+    return window._MOBILE_APP || window.innerWidth < 768;
+  }
+
   function render() {
     loadSessions();
     const hasLLM = chatEnabled();
@@ -163,8 +179,13 @@ window.ChatMod = (function() {
 
           <div class="chat-input-area">
             <div class="chat-input-row">
-              <textarea id="chatInput" class="chat-input" placeholder="问我任何购房问题…  (Enter 发送, Shift+Enter 换行)"
-                rows="1" oninput="ChatMod.autoResize(this)" onkeydown="ChatMod.onKeydown(event)"></textarea>
+              ${mobileUI() ? `
+                <input id="chatInput" class="chat-input" placeholder="问我任何购房问题…" onkeydown="ChatMod.onKeydown(event)">
+              ` : `
+                <textarea id="chatInput" class="chat-input" placeholder="问我任何购房问题…  (Enter 发送, Shift+Enter 换行)"
+                  rows="1" oninput="ChatMod.autoResize(this)" onkeydown="ChatMod.onKeydown(event)"></textarea>
+              `}
+              ${(voiceEngine() !== 'none' || mobileUI()) ? `<button class="chat-voice-btn" id="chatVoiceBtn" onclick="ChatMod.toggleVoice()" title="语音输入" aria-label="语音输入">${ic('mic', 20)}</button>` : ''}
               <button class="chat-send-btn" id="chatSendBtn" onclick="ChatMod.sendFromInput()" ${!hasLLM ? 'disabled' : ''}>
                 ${ic('send', 20)}
               </button>
@@ -633,6 +654,177 @@ window.ChatMod = (function() {
     }
   }
 
+  // ===== 语音输入（浏览器原生 Web Speech API） =====
+  // 创建全新识别实例。注意：SpeechRecognition 实例是一次性的（一次 start→end 后不可复用，
+  // 复用会抛 InvalidStateError），因此每次开始录音都重建，杜绝"识别引擎未就绪"。
+  function createVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const rec = new SR();
+    rec.lang = 'zh-CN';
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    let gotText = false; // 本次识别是否出过字（用于结束提示）
+
+    // 启动兜底：用户在引擎启动过程中（如权限弹窗期）点过停止，真正开始后立即终止
+    rec.onstart = () => {
+      if (voiceStopping) { try { rec.stop(); } catch(_) {} }
+    };
+
+    // 识别结果实时填入输入框：final 固化到 voiceBase（已确认文字），interim 只做临时预览
+    rec.onresult = (ev) => {
+      const input = document.getElementById('chatInput');
+      if (!input) return;
+      const base = input.dataset.voiceBase || '';
+      // 输入框内容已被用户手动改动则不覆盖，避免删除用户输入的文字
+      if (input.value !== (input.dataset.voiceLast || base) && input.value !== base) return;
+      let interim = '', final = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const t = ev.results[i][0].transcript;
+        if (ev.results[i].isFinal) final += t; else interim += t;
+      }
+      // final 追加进已确认区；interim 仅拼在末尾展示，避免中间结果重复累积
+      if (final) { input.dataset.voiceBase = base + final; gotText = true; }
+      input.value = (input.dataset.voiceBase || '') + interim;
+      input.dataset.voiceLast = input.value;
+      autoResize(input);
+    };
+    rec.onend = () => {
+      if (recognition === rec) recognition = null; // 实例生命周期结束，下次录音重建
+      isRecording = false;
+      voiceStopping = false;
+      updateVoiceBtn();
+      const input = document.getElementById('chatInput');
+      if (input) { delete input.dataset.voiceBase; delete input.dataset.voiceLast; input.focus(); }
+      if (gotText) Utils.toast('识别完成', 'success', 1500);
+    };
+    rec.onerror = (e) => {
+      isRecording = false;
+      voiceStopping = false;
+      updateVoiceBtn();
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        Utils.toast('麦克风权限被拒绝，请在浏览器设置中允许', 'warn', 3000);
+      } else if (e.error === 'no-speech') {
+        Utils.toast('未识别到语音，请重试', 'warn');
+      } else if (e.error === 'network' || e.error === 'network-error') {
+        // Chrome 语音识别依赖 Google 云端服务，国内网络不稳定时高频出现
+        Utils.toast('语音识别网络异常，请检查网络后重试', 'warn', 3500);
+      } else if (e.error !== 'aborted') {
+        Utils.toast('语音识别失败：' + e.error, 'warn');
+      }
+    };
+    return rec;
+  }
+  // 切换录音：点击开始 / 再点击停止；讯飞优先（可配置，任何现代浏览器可用），原生兜底
+  function toggleVoice() {
+    const engine = voiceEngine();
+    if (engine === 'none') {
+      // iOS Safari 等移动浏览器普遍不支持原生 Web Speech API，配置讯飞后即可在手机端使用
+      Utils.toast('当前浏览器不支持原生语音识别：请管理员在「设置 → 语音识别（讯飞）」配置三要素后，手机与电脑均可使用语音输入', 'warn', 4500);
+      return;
+    }
+    // 录音中点击 = 停止
+    if (isRecording) { stopVoice(); return; }
+    // 录音（getUserMedia）与 Web Speech API 均受浏览器安全上下文限制，仅 https / localhost 可用；
+    // 发布到云端 https 域名后，Web 端与手机端浏览器即可正常使用语音输入
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      Utils.toast('语音输入需在 https 环境使用：将系统部署到云端（https 域名）后，电脑与手机均可使用；本机测试请用 localhost 访问', 'warn', 4500);
+      return;
+    }
+    if (engine === 'xf') startXfVoice();
+    else startNativeVoice();
+  }
+
+  // ===== 讯飞引擎：国内直连，实时识别 =====
+  function startXfVoice() {
+    const input = document.getElementById('chatInput');
+    if (input) { input.dataset.voiceBase = input.value; input.dataset.voiceLast = input.value; }
+    VoiceMod.start({
+      onResult: (txt) => {
+        const el = document.getElementById('chatInput');
+        if (!el) return;
+        const base = el.dataset.voiceBase || '';
+        // 输入框内容已被用户手动改动（与上次写入不一致）则不覆盖，避免删除用户输入的文字
+        if (el.value !== (el.dataset.voiceLast || base) && el.value !== base) return;
+        el.value = base + txt;
+        el.dataset.voiceLast = el.value;
+        autoResize(el);
+      },
+      onEnd: () => {
+        isRecording = false;
+        updateVoiceBtn();
+        const el = document.getElementById('chatInput');
+        if (el) { delete el.dataset.voiceBase; delete el.dataset.voiceLast; el.focus(); }
+      },
+      onError: (e) => {
+        isRecording = false;
+        updateVoiceBtn();
+        const el = document.getElementById('chatInput');
+        if (el) { delete el.dataset.voiceBase; delete el.dataset.voiceLast; }
+        Utils.toast('讯飞语音识别失败：' + (e.message || e), 'warn', 3500);
+      },
+      onLimit: () => {
+        // 单次识别到 55s 上限，已自动停止；再次点击可继续录入
+        Utils.toast('已达单次识别时长上限，已自动停止；再次点击麦克风可继续输入', 'warn', 3500);
+      }
+    }).then(() => {
+      isRecording = true;
+      updateVoiceBtn();
+      Utils.toast('正在录音…请说话，说完点击按钮停止', 'info', 2000);
+    }).catch(e => {
+      Utils.toast('语音识别启动失败：' + (e.message || e), 'warn');
+    });
+  }
+
+  // ===== 浏览器原生引擎：每次录音新建实例，避免复用已结束实例抛 InvalidStateError =====
+  function startNativeVoice() {
+    recognition = createVoice();
+    if (!recognition) { Utils.toast('语音识别初始化失败', 'warn'); return; }
+    const input = document.getElementById('chatInput');
+    if (input) { input.dataset.voiceBase = input.value; input.dataset.voiceLast = input.value; }
+    try {
+      voiceStopping = false; // 先复位再启动，避免残留的停止标记误杀本次录音
+      recognition.start();
+      isRecording = true;
+      updateVoiceBtn();
+      Utils.toast('正在录音…请说话，说完点击按钮停止', 'info', 2000);
+    } catch(e) {
+      // 启动失败：销毁实例并恢复按钮状态，下次点击自动重建重试
+      recognition = null;
+      isRecording = false;
+      updateVoiceBtn();
+      if (e.name === 'InvalidStateError') {
+        Utils.toast('识别引擎未就绪，请再点一次', 'warn', 2500);
+      } else if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
+        Utils.toast('麦克风权限被拒绝，请在浏览器地址栏允许访问麦克风', 'warn', 3000);
+      } else {
+        Utils.toast('启动语音识别失败：' + (e.message || e.name || '未知错误'), 'warn');
+      }
+    }
+  }
+  // 停止录音：先重置 UI，再按当前引擎停止
+  function stopVoice() {
+    isRecording = false;
+    voiceStopping = true;
+    updateVoiceBtn();
+    if (voiceEngine() === 'xf') {
+      if (window.VoiceMod) VoiceMod.stop();
+      // 讯飞停止后最终结果在后台补全，结束提示立即给出，避免用户等待
+      Utils.toast('识别完成', 'success', 1500);
+    } else if (recognition) {
+      try { recognition.stop(); } catch(_) {}
+    }
+  }
+  // 录音中按钮视觉变化：红色脉冲动画
+  function updateVoiceBtn() {
+    const btn = document.getElementById('chatVoiceBtn');
+    if (!btn) return;
+    btn.classList.toggle('recording', isRecording);
+    btn.title = isRecording ? '点击停止语音输入' : '语音输入';
+    btn.setAttribute('aria-label', isRecording ? '停止语音输入' : '语音输入');
+  }
+
   // ===== 工具函数 =====
   function escapeHTML(s) {
     const d = document.createElement('div');
@@ -784,5 +976,5 @@ window.ChatMod = (function() {
 
   return { render, send, sendQuick, sendFromInput, clearHistory, doClear, autoResize, onKeydown, renderFab,
            toggleSider, newSession, switchSession, delSession, doDelSession, closeDrawer, openRechargeModal,
-           refreshQuotaAll, initFab, showFabPop, hideFabPop, gotoChat };
+           refreshQuotaAll, initFab, showFabPop, hideFabPop, gotoChat, toggleVoice };
 })();
